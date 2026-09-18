@@ -61,16 +61,48 @@ const BASEMAPS: Record<
   },
   plain: {
     label: "Plain",
-    attribution: "",
-    // No sources or layers at all — the WebGL canvas renders fully
-    // transparent, and the plain gray/white color comes from the
-    // container's own CSS background instead (set below). Simpler and
-    // more robust than relying on a MapLibre "background" style layer.
-    style: { version: 8, sources: {}, layers: [] },
+    // A single pre-rendered world image (gray countries, white borders,
+    // white ocean — see scripts/build-plain-basemap-image.mjs) rather than
+    // a live GeoJSON source styled with fill/line layers. MapLibre's normal
+    // way of drawing vector boundaries relies on its worker pipeline
+    // (parsing and tiling happen off the main thread), and that pipeline
+    // hangs indefinitely in this app's Turbopack-bundled build — confirmed
+    // with Playwright to reproduce identically in both `next dev` and a
+    // production `next build && next start`, even with inline GeoJSON data
+    // and no network fetch involved, while the exact same style renders
+    // fine outside of Next/Turbopack. A raster image source sidesteps that
+    // pipeline entirely (no worker involved), which is also why Streets and
+    // Satellite — both raster — were never affected by this bug.
+    attribution: "Natural Earth",
+    style: {
+      version: 8,
+      sources: {
+        world: {
+          type: "image",
+          url: "/plain-basemap.png",
+          // Corners in order: top-left, top-right, bottom-right, bottom-left.
+          // Clamped to ±85.0511° (the standard Web Mercator latitude limit)
+          // rather than the poles: Mercator's Y coordinate goes to infinity
+          // at ±90°, which MapLibre rejects outright ("outside of bounds")
+          // for an image source's corners. The image itself still covers
+          // the full ±90° vertically, so this just crops a sliver of
+          // Antarctica/the Arctic Ocean that no web map projection can
+          // show anyway.
+          coordinates: [
+            [-180, 85.0511],
+            [180, 85.0511],
+            [180, -85.0511],
+            [-180, -85.0511],
+          ],
+        },
+      },
+      layers: [
+        { id: "water", type: "background", paint: { "background-color": "#ffffff" } },
+        { id: "world", type: "raster", source: "world" },
+      ],
+    },
   },
 };
-
-const PLAIN_BACKGROUND = "#e5e2da";
 
 function pointFor(s: SampleRecord): [number, number] | null {
   const lat = Number(s.latitude);
@@ -169,15 +201,35 @@ export function SampleMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const lastCoordsRef = useRef<[number, number][]>([]);
-  const plainOverlayRef = useRef<HTMLDivElement | null>(null);
   const [basemap, setBasemap] = useState<BasemapId>("streets");
   const [exporting, setExporting] = useState(false);
 
+  // Set once the map's current style is fully loaded (initial mount, and
+  // again after every basemap switch); false while a style swap is still
+  // in flight. Lets the marker effect below know whether it's safe to place
+  // markers now or must wait.
+  const styleReadyRef = useRef(false);
+  // Always points at the latest marker-placement closure, called once the
+  // current style becomes ready (which can happen before or after that
+  // closure was last updated).
+  const latestSyncMarkersRef = useRef<() => void>(() => {});
+  // Tracks the basemap the map's style was last set to, so the basemap
+  // effect (below) can skip calling setStyle() on first mount — the
+  // constructor already applied the initial style — and only swap styles
+  // on an actual change.
+  const currentStyleIdRef = useRef<BasemapId | null>(null);
+
+  // Creates the map exactly once, on mount, and never destroys it until
+  // unmount. Basemap switches are handled by a separate effect that calls
+  // setStyle() on this same instance (see below) rather than tearing the
+  // map down and rebuilding it — a single long-lived instance avoids the
+  // churn of repeatedly constructing/destroying MapLibre's internal state.
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!containerRef.current) return;
+
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: BASEMAPS.streets.style as ConstructorParameters<typeof MapLibreMap>[0]["style"],
+      style: BASEMAPS[basemap].style as ConstructorParameters<typeof MapLibreMap>[0]["style"],
       center: [0, 0],
       zoom: 1,
       // Needed to read the canvas back out as an image for PDF export —
@@ -185,100 +237,112 @@ export function SampleMap({
       // otherwise make toDataURL() return a blank image most of the time.
       canvasContextAttributes: { preserveDrawingBuffer: true },
     });
+    currentStyleIdRef.current = basemap;
     map.addControl(new NavigationControl(), "top-left");
+    map.on("error", (e) => {
+      // Individual tile fetch failures are routine (flaky network, a
+      // blocked host) and not a Specibase-level problem — only report
+      // genuine style/rendering errors.
+      if (e.error?.message?.includes("AJAXError")) return;
+      console.error("MapLibre error", e.error);
+      onSyncError?.(e.error?.message ?? "Unknown map error");
+    });
+    // "load" only ever fires once per map instance (the very first style
+    // load); every later basemap switch is picked up by "idle" instead,
+    // which fires whenever the map settles after any change, including a
+    // setStyle() call — see the basemap-switch effect below.
+    map.on("load", () => {
+      styleReadyRef.current = true;
+      map.resize();
+      latestSyncMarkersRef.current();
+    });
     mapRef.current = map;
-
-    // The Plain basemap's color comes from this plain DOM element, not
-    // from the WebGL canvas — whether an "empty" style actually renders
-    // as transparent (vs. an opaque default clear color) isn't reliably
-    // the same across browsers/GPUs, so this sidesteps that entirely.
-    // Markers live *inside* the canvas container (siblings of the canvas
-    // itself), not as siblings of it — appending to the map's outer
-    // container would stack this overlay above the canvas container as a
-    // whole, hiding markers along with it. Appending inside the canvas
-    // container instead, right after the canvas but before any markers
-    // exist yet, puts it above the canvas and below markers by plain DOM
-    // order alone, with no z-index bookkeeping needed.
-    const overlay = document.createElement("div");
-    overlay.style.position = "absolute";
-    overlay.style.inset = "0";
-    overlay.style.pointerEvents = "none";
-    overlay.style.backgroundColor = PLAIN_BACKGROUND;
-    overlay.style.display = "none";
-    map.getCanvasContainer().appendChild(overlay);
-    plainOverlayRef.current = overlay;
 
     return () => {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      overlay.remove();
-      plainOverlayRef.current = null;
       map.remove();
-      mapRef.current = null;
+      if (mapRef.current === map) mapRef.current = null;
     };
+    // Deliberately empty: this effect must run exactly once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Switching the basemap only ever calls setStyle — it never touches
-  // markers (plain DOM elements, not part of the style), so points never
-  // disappear or need rebuilding when this runs.
+  // Swaps the live style in place when the user picks a different basemap,
+  // instead of tearing the map down (see the mount effect above for why).
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    map.setStyle(BASEMAPS[basemap].style as Parameters<MapLibreMap["setStyle"]>[0]);
-    if (plainOverlayRef.current) {
-      plainOverlayRef.current.style.display = basemap === "plain" ? "block" : "none";
-    }
+    if (!map || currentStyleIdRef.current === basemap) return;
+
+    styleReadyRef.current = false;
+    currentStyleIdRef.current = basemap;
+    map.setStyle(BASEMAPS[basemap].style as Parameters<typeof map.setStyle>[0]);
+    map.once("idle", () => {
+      styleReadyRef.current = true;
+      latestSyncMarkersRef.current();
+    });
   }, [basemap]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+    function syncMarkers() {
+      const map = mapRef.current;
+      if (!map) return;
 
-    try {
-      // Markers are plain DOM elements positioned by MapLibre, not a WebGL
-      // style layer — simplest to just clear and rebuild them all rather
-      // than diff which ones changed.
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
+      try {
+        // Markers are plain DOM elements positioned by MapLibre, not a
+        // WebGL style layer — simplest to just clear and rebuild them all
+        // rather than diff which ones changed.
+        markersRef.current.forEach((m) => m.remove());
+        markersRef.current = [];
 
-      const points = computeVisiblePoints(samples, layers, visibleLayerIds, activeLayerId);
-      const coords: [number, number][] = [];
+        const points = computeVisiblePoints(samples, layers, visibleLayerIds, activeLayerId);
+        const coords: [number, number][] = [];
 
-      for (const { sample, point, color, size } of points) {
-        coords.push(point);
+        for (const { sample, point, color, size } of points) {
+          coords.push(point);
 
-        const el = document.createElement("div");
-        el.style.width = `${size}px`;
-        el.style.height = `${size}px`;
-        el.style.borderRadius = "50%";
-        el.style.backgroundColor = color;
-        el.style.border = "2px solid #ffffff";
-        el.style.boxShadow = "0 0 2px rgba(0,0,0,0.5)";
-        el.style.cursor = "pointer";
+          const el = document.createElement("div");
+          el.style.width = `${size}px`;
+          el.style.height = `${size}px`;
+          el.style.borderRadius = "50%";
+          el.style.backgroundColor = color;
+          el.style.border = "2px solid #ffffff";
+          el.style.boxShadow = "0 0 2px rgba(0,0,0,0.5)";
+          el.style.cursor = "pointer";
 
-        const popup = new Popup({ offset: size / 2 + 4, closeButton: true }).setHTML(
-          buildPopupHtml(sample, popupColumns)
-        );
+          const popup = new Popup({ offset: size / 2 + 4, closeButton: true }).setHTML(
+            buildPopupHtml(sample, popupColumns)
+          );
 
-        const marker = new Marker({ element: el }).setLngLat(point).setPopup(popup).addTo(map);
-        markersRef.current.push(marker);
+          const marker = new Marker({ element: el }).setLngLat(point).setPopup(popup).addTo(map);
+          markersRef.current.push(marker);
+        }
+
+        lastCoordsRef.current = coords;
+
+        if (coords.length > 0) {
+          map.resize();
+          const bounds = coords.reduce(
+            (b, coord) => b.extend(coord),
+            new LngLatBounds(coords[0], coords[0])
+          );
+          map.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown map error";
+        console.error("Failed to place map markers", error);
+        onSyncError?.(message);
       }
-
-      lastCoordsRef.current = coords;
-
-      if (coords.length > 0) {
-        map.resize();
-        const bounds = coords.reduce(
-          (b, coord) => b.extend(coord),
-          new LngLatBounds(coords[0], coords[0])
-        );
-        map.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown map error";
-      console.error("Failed to place map markers", error);
-      onSyncError?.(message);
     }
+
+    latestSyncMarkersRef.current = syncMarkers;
+    if (styleReadyRef.current) {
+      syncMarkers();
+    }
+    // If a style swap is still in flight (initial mount's "load", or a
+    // basemap switch's "idle" — see the effects above), that handler will
+    // call latestSyncMarkersRef.current() — which by then points at this
+    // run's syncMarkers — once the style settles.
   }, [samples, layers, visibleLayerIds, activeLayerId, popupColumns, onSyncError]);
 
   function fitToData() {
@@ -313,13 +377,6 @@ export function SampleMap({
       composite.height = height;
       const ctx = composite.getContext("2d");
       if (!ctx) throw new Error("Canvas is not supported in this browser");
-      // The Plain basemap's WebGL canvas is fully transparent (its color
-      // comes from CSS instead — see the basemap-switch effect), so that
-      // color needs painting in manually before the canvas is drawn on top.
-      if (basemap === "plain") {
-        ctx.fillStyle = PLAIN_BACKGROUND;
-        ctx.fillRect(0, 0, width, height);
-      }
       ctx.drawImage(mapCanvas, 0, 0, width, height);
 
       // Markers are DOM elements, invisible to the WebGL canvas — redrawn
