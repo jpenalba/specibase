@@ -59,3 +59,16 @@ export const ALL_FIELDS: FieldDef[] = [
 export function optionalFieldByKey(key: string): FieldDef | undefined {
   return OPTIONAL_FIELDS.find((f) => f.key === key);
 }
+
+// The full set of columns currently shown for a table/popup/etc, given
+// which optional fields are ticked — used by anywhere that needs to know
+// "every field visible right now," not just the table.
+export function getVisibleColumns(visibleOptionalKeys: string[]): FieldDef[] {
+  return [
+    ...REQUIRED_FIELDS,
+    ...LOCATION_FIELDS,
+    ...visibleOptionalKeys
+      .map((key) => optionalFieldByKey(key))
+      .filter((f): f is FieldDef => Boolean(f)),
+  ];
+}

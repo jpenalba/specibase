@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SampleRecord } from "@/lib/samples-store";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
 import { buildLayers, ALL_LAYER_ID } from "@/lib/layers";
+import { getVisibleColumns } from "@/lib/fields";
 import { useOptionalFields } from "@/lib/use-optional-fields";
 import { SampleMap } from "@/components/database/sample-map";
 import { LayerPanel } from "@/components/database/layer-panel";
@@ -22,8 +23,8 @@ export default function DatabasePage() {
   );
   const [activeLayerId, setActiveLayerId] = useState<string>(ALL_LAYER_ID);
   const [mapSyncError, setMapSyncError] = useState<string | null>(null);
-  const [mapFeatureCounts, setMapFeatureCounts] = useState<Record<string, number>>({});
   const { selected, toggle } = useOptionalFields();
+  const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,15 +117,6 @@ export default function DatabasePage() {
           The map couldn&apos;t draw the points: {mapSyncError}
         </div>
       )}
-      {!loading && !mapSyncError && (
-        <p className="text-sm text-muted-foreground">
-          Map points by layer:{" "}
-          {allLayers
-            .filter((l) => visibleLayerIds.has(l.id))
-            .map((l) => `${l.label} ${mapFeatureCounts[l.id] ?? 0}/${l.sampleIds.size}`)
-            .join(", ") || "no layers ticked visible"}
-        </p>
-      )}
 
       <div className="flex h-[55vh] min-h-[420px] gap-4">
         <div className="flex-1 overflow-hidden rounded-lg border border-border">
@@ -133,8 +125,8 @@ export default function DatabasePage() {
             layers={allLayers}
             visibleLayerIds={visibleLayerIds}
             activeLayerId={activeLayerId}
+            popupColumns={popupColumns}
             onSyncError={setMapSyncError}
-            onFeatureCounts={setMapFeatureCounts}
           />
         </div>
         <div className="w-64 shrink-0">

@@ -1,6 +1,7 @@
 "use client";
 
-import { REQUIRED_FIELDS, LOCATION_FIELDS, optionalFieldByKey } from "@/lib/fields";
+import { useMemo, useState } from "react";
+import { getVisibleColumns, FieldDef } from "@/lib/fields";
 import { SampleRecord } from "@/lib/samples-store";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import {
@@ -12,6 +13,21 @@ import {
   TableCell,
 } from "@/components/ui/table";
 
+type SortState = { key: string; direction: "asc" | "desc" };
+
+function compareValues(a: unknown, b: unknown, type: FieldDef["type"]): number {
+  const aEmpty = a === undefined || a === "" || a === null;
+  const bEmpty = b === undefined || b === "" || b === null;
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1; // empty values always sort last, regardless of direction
+  if (bEmpty) return -1;
+
+  if (type === "number") return Number(a) - Number(b);
+  // Dates are stored as ISO (YYYY-MM-DD), which sorts correctly as a plain
+  // string — no need to special-case it separately from text.
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
 export function SampleTable({
   samples,
   visibleOptionalKeys,
@@ -19,13 +35,30 @@ export function SampleTable({
   samples: SampleRecord[];
   visibleOptionalKeys: string[];
 }) {
-  const columns = [
-    ...REQUIRED_FIELDS,
-    ...LOCATION_FIELDS,
-    ...visibleOptionalKeys
-      .map((key) => optionalFieldByKey(key))
-      .filter((f): f is NonNullable<typeof f> => Boolean(f)),
-  ];
+  const columns = getVisibleColumns(visibleOptionalKeys);
+  const [sort, setSort] = useState<SortState | null>(null);
+
+  const sortedSamples = useMemo(() => {
+    if (!sort) return samples;
+    const column = columns.find((c) => c.key === sort.key);
+    if (!column) return samples;
+    const sign = sort.direction === "asc" ? 1 : -1;
+    return [...samples].sort(
+      (a, b) => sign * compareValues(a[column.key], b[column.key], column.type)
+    );
+    // columns is derived fresh each render from visibleOptionalKeys, so it's
+    // deliberately left out of the dependency list to avoid re-sorting on
+    // every render — sort.key is enough to look the column back up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [samples, sort]);
+
+  function toggleSort(key: string) {
+    setSort((prev) => {
+      if (prev?.key !== key) return { key, direction: "asc" };
+      if (prev.direction === "asc") return { key, direction: "desc" };
+      return null;
+    });
+  }
 
   if (samples.length === 0) {
     return (
@@ -41,12 +74,23 @@ export function SampleTable({
         <TableHeader>
           <TableRow>
             {columns.map((col) => (
-              <TableHead key={col.key}>{col.label}</TableHead>
+              <TableHead key={col.key}>
+                <button
+                  type="button"
+                  onClick={() => toggleSort(col.key)}
+                  className="flex items-center gap-1 hover:text-foreground"
+                >
+                  {col.label}
+                  <span className="w-3 text-[10px]">
+                    {sort?.key === col.key ? (sort.direction === "asc" ? "▲" : "▼") : ""}
+                  </span>
+                </button>
+              </TableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {samples.map((sample) => (
+          {sortedSamples.map((sample) => (
             <TableRow key={sample.id}>
               {columns.map((col) => {
                 const value = sample[col.key];

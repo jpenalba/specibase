@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds } from "maplibre-gl";
 import { SampleRecord } from "@/lib/samples-store";
 import { MapLayer } from "@/lib/layers";
+import { FieldDef } from "@/lib/fields";
+import { formatToDDMMYYYY } from "@/lib/dates";
 
 // No API key required — OpenStreetMap's raster tiles work with zero setup,
 // which matters for a lab tool that should run the moment it's deployed.
@@ -36,23 +38,57 @@ function pointFor(s: SampleRecord): [number, number] | null {
   return [lon, lat];
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Shows the same fields currently visible in the table below, not just
+// ID/species — explicit dark colors throughout, since the popup renders
+// on its own white bubble regardless of the app's light/dark theme, and
+// leaving color unset here read as too-light gray to read comfortably.
+function buildPopupHtml(sample: SampleRecord, columns: FieldDef[]): string {
+  const rows = columns
+    .map((col) => {
+      const raw = sample[col.key];
+      const display =
+        raw === undefined || raw === null || raw === ""
+          ? "—"
+          : col.type === "date"
+            ? formatToDDMMYYYY(String(raw))
+            : String(raw);
+      return `<div style="display:flex;justify-content:space-between;gap:16px;padding:2px 0;">
+        <span style="color:#52514e;">${escapeHtml(col.label)}</span>
+        <span style="color:#0b0b0b;font-weight:500;text-align:right;">${escapeHtml(display)}</span>
+      </div>`;
+    })
+    .join("");
+  return `<div style="font-size:13px;min-width:200px;">${rows}</div>`;
+}
+
 export function SampleMap({
   samples,
   layers,
   visibleLayerIds,
   activeLayerId,
+  popupColumns,
   onSyncError,
-  onFeatureCounts,
 }: {
   samples: SampleRecord[];
   layers: MapLayer[];
   visibleLayerIds: Set<string>;
   activeLayerId: string;
-  // Escape hatches so map-internal problems surface directly on the page
-  // instead of only in the browser console — most people using this app
-  // won't have DevTools open.
+  // Fields shown when a point is clicked — pass the same columns visible
+  // in the table so a marker's popup and the table row agree.
+  popupColumns: FieldDef[];
+  // Surfaces map-internal problems directly on the page instead of only
+  // in the browser console — most people using this app won't have
+  // DevTools open.
   onSyncError?: (message: string) => void;
-  onFeatureCounts?: (counts: Record<string, number>) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -89,18 +125,15 @@ export function SampleMap({
       markersRef.current = [];
 
       const coords: [number, number][] = [];
-      const counts: Record<string, number> = {};
 
       for (const layer of layers) {
         if (!visibleLayerIds.has(layer.id)) continue;
         const isActive = layer.id === activeLayerId;
-        let count = 0;
 
         for (const sample of samples) {
           if (!layer.sampleIds.has(sample.id)) continue;
           const point = pointFor(sample);
           if (!point) continue;
-          count++;
           coords.push(point);
 
           const el = document.createElement("div");
@@ -114,7 +147,7 @@ export function SampleMap({
           el.style.cursor = "pointer";
 
           const popup = new Popup({ offset: size / 2 + 4, closeButton: true }).setHTML(
-            `<div style="font-size:13px"><strong>${sample.primary_identifier}</strong><br/>${sample.species}</div>`
+            buildPopupHtml(sample, popupColumns)
           );
 
           const marker = new Marker({ element: el })
@@ -123,11 +156,8 @@ export function SampleMap({
             .addTo(map);
           markersRef.current.push(marker);
         }
-
-        counts[layer.id] = count;
       }
 
-      onFeatureCounts?.(counts);
       lastCoordsRef.current = coords;
 
       if (coords.length > 0) {
@@ -143,7 +173,7 @@ export function SampleMap({
       console.error("Failed to place map markers", error);
       onSyncError?.(message);
     }
-  }, [samples, layers, visibleLayerIds, activeLayerId, onSyncError, onFeatureCounts]);
+  }, [samples, layers, visibleLayerIds, activeLayerId, popupColumns, onSyncError]);
 
   function fitToData() {
     const map = mapRef.current;
