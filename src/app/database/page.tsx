@@ -15,6 +15,8 @@ export default function DatabasePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [links, setLinks] = useState<SampleProjectLink[]>([]);
   const [loading, setLoading] = useState(true);
+  const [samplesError, setSamplesError] = useState<string | null>(null);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
   const [visibleLayerIds, setVisibleLayerIds] = useState<Set<string>>(
     new Set([ALL_LAYER_ID])
   );
@@ -23,24 +25,39 @@ export default function DatabasePage() {
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const [samplesRes, projectsRes] = await Promise.all([
-          fetch("/api/samples"),
-          fetch("/api/projects"),
-        ]);
-        const samplesData = await samplesRes.json();
-        const projectsData = await projectsRes.json();
+
+    // Fetched independently — projects failing to load (e.g. the
+    // projects/sample_projects migration hasn't been run yet) must not
+    // also block samples from showing up.
+    fetch("/api/samples")
+      .then((res) => res.json())
+      .then((data) => {
         if (cancelled) return;
-        setSamples(samplesData.samples ?? []);
-        setProjects(projectsData.projects ?? []);
-        setLinks(projectsData.links ?? []);
-      } finally {
+        if (data.errors?.length > 0) setSamplesError(data.errors.join(" "));
+        else setSamples(data.samples ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setSamplesError("Couldn't reach the server.");
+      })
+      .finally(() => {
         if (!cancelled) setLoading(false);
-      }
-    }
-    load();
+      });
+
+    fetch("/api/projects")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.errors?.length > 0) {
+          setProjectsError(data.errors.join(" "));
+        } else {
+          setProjects(data.projects ?? []);
+          setLinks(data.links ?? []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProjectsError("Couldn't reach the server.");
+      });
+
     return () => {
       cancelled = true;
     };
@@ -76,6 +93,22 @@ export default function DatabasePage() {
           click a layer&apos;s name to view its samples in the table below.
         </p>
       </div>
+
+      {samplesError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          Couldn&apos;t load samples: {samplesError}
+        </div>
+      )}
+      {projectsError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          Couldn&apos;t load projects: {projectsError}. If you haven&apos;t
+          already, run{" "}
+          <code className="rounded bg-black/10 px-1">
+            supabase/migrations/0001_optional_location_and_projects.sql
+          </code>{" "}
+          in the Supabase SQL Editor.
+        </div>
+      )}
 
       <div className="flex h-[55vh] min-h-[420px] gap-4">
         <div className="flex-1 overflow-hidden rounded-lg border border-border">

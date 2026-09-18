@@ -110,7 +110,10 @@ export default function SamplesPage() {
       if (data.skipped?.length > 0) {
         text += ` ${data.skipped.length} row(s) were skipped — they're still staged below.`;
       }
-      setMessage({ tone: "success", text });
+      if (data.errors?.length > 0) {
+        text += ` ${data.errors.join(" ")}`;
+      }
+      setMessage({ tone: data.errors?.length > 0 ? "error" : "success", text });
     } catch {
       setMessage({ tone: "error", text: "Upload failed — check your connection and try again." });
     } finally {

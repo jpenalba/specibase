@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { insertSamplesBulk } from "@/lib/samples-store";
 import { getOrCreateProject, linkSamplesToProject } from "@/lib/projects-store";
 import { RawRow } from "@/lib/validation";
+import { apiError } from "@/lib/api-error";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -13,17 +14,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ errors: ["No rows to import"] }, { status: 400 });
   }
 
-  const result = await insertSamplesBulk(rows);
+  let result;
+  try {
+    result = await insertSamplesBulk(rows);
+  } catch (error) {
+    return apiError(error);
+  }
 
   let project = null;
   if (result.inserted.length > 0 && (projectId || newProjectName)) {
-    project = newProjectName
-      ? await getOrCreateProject(newProjectName)
-      : { id: projectId! };
-    await linkSamplesToProject(
-      result.inserted.map((s) => s.id),
-      project.id
-    );
+    try {
+      project = newProjectName
+        ? await getOrCreateProject(newProjectName)
+        : { id: projectId! };
+      await linkSamplesToProject(
+        result.inserted.map((s) => s.id),
+        project.id
+      );
+    } catch (error) {
+      // The samples themselves are already committed at this point —
+      // report that plainly rather than returning an unparseable error
+      // and leaving the caller thinking nothing happened.
+      const message = error instanceof Error ? error.message : "Unexpected error";
+      return NextResponse.json(
+        {
+          ...result,
+          project: null,
+          errors: [
+            `${result.inserted.length} sample(s) were uploaded, but associating them with a project failed: ${message}`,
+          ],
+        },
+        { status: 200 }
+      );
+    }
   }
 
   return NextResponse.json({ ...result, project }, { status: 200 });
