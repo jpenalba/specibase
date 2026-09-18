@@ -40,6 +40,16 @@ export async function getOrCreateProject(name: string): Promise<Project> {
   return data as Project;
 }
 
+export type SampleProjectLink = { sample_id: string; project_id: string };
+
+// Every sample/project pairing — used to work out which samples belong to
+// which project without an N+1 query per project.
+export async function listSampleProjectLinks(): Promise<SampleProjectLink[]> {
+  const { data, error } = await getSupabase().from(LINK_TABLE).select("*");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SampleProjectLink[];
+}
+
 // Links are upserted (ignore duplicates) since a sample can already be
 // tied to the project from an earlier upload.
 export async function linkSamplesToProject(

@@ -1,6 +1,6 @@
 "use client";
 
-import { REQUIRED_FIELDS, optionalFieldByKey } from "@/lib/fields";
+import { REQUIRED_FIELDS, LOCATION_FIELDS, optionalFieldByKey } from "@/lib/fields";
 import { SampleRecord } from "@/lib/samples-store";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import {
@@ -21,6 +21,7 @@ export function SampleTable({
 }) {
   const columns = [
     ...REQUIRED_FIELDS,
+    ...LOCATION_FIELDS,
     ...visibleOptionalKeys
       .map((key) => optionalFieldByKey(key))
       .filter((f): f is NonNullable<typeof f> => Boolean(f)),

@@ -4,7 +4,12 @@ Sample database for evolutionary biology field collections. See [PLAN.md](./PLAN
 
 ## Current state
 
-An early prototype of the "add samples" flow, backed by Supabase/Postgres. `/samples` is a **staging area**, not a live view of the database: Add Sample and Import CSV both stage rows locally in the browser first, and nothing reaches the database until you click Upload at the bottom of the page. A separate page for browsing/searching everything already in the database doesn't exist yet — that's the next piece, likely alongside the map.
+An early prototype with two pages, backed by Supabase/Postgres:
+
+- **`/samples`** — a **staging area**, not a live view of the database. Add Sample and Import CSV both stage rows locally in the browser first, and nothing reaches the database until you click Upload at the bottom of the page.
+- **`/database`** — browse what's actually in the database: a map (top) with a right-hand layer panel and a table (bottom). "Main database" is always the root layer (every sample); each project is a nested child layer scoped to its linked samples. Ticking a layer's checkbox shows/hides its points on the map (multiple layers can be visible at once, each in its own color); clicking a layer's name makes it "active," which is what the bottom table shows. Only samples with coordinates get a map point — a sample identified by locality alone still shows up in the table. The map uses OpenStreetMap's free raster tiles with no API key, which is fine for prototyping but not meant for heavy production traffic — swap in MapTiler/Stadia/Mapbox with a real key (`src/components/database/sample-map.tsx`) if this gets real day-to-day use.
+
+Shared behavior:
 
 - Required fields: Sample ID, species
 - Location: either latitude & longitude, or a locality, is required — not each field individually. All three are always shown together (not part of the optional-field toggle), since hiding all three would make the requirement impossible to satisfy.

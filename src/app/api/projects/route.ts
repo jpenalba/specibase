@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrCreateProject, listProjects } from "@/lib/projects-store";
+import {
+  getOrCreateProject,
+  listProjects,
+  listSampleProjectLinks,
+} from "@/lib/projects-store";
 
 export async function GET() {
-  return NextResponse.json({ projects: await listProjects() });
+  const [projects, links] = await Promise.all([listProjects(), listSampleProjectLinks()]);
+  return NextResponse.json({ projects, links });
 }
 
 export async function POST(request: NextRequest) {
