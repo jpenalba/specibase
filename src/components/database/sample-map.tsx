@@ -45,17 +45,28 @@ function toFeatureCollection(
   samples: SampleRecord[],
   sampleIds: Set<string>
 ): GeoJSON.FeatureCollection<GeoJSON.Point> {
-  const features: GeoJSON.Feature<GeoJSON.Point>[] = samples
-    .filter((s) => sampleIds.has(s.id) && s.latitude != null && s.longitude != null)
-    .map((s) => ({
+  const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+  for (const s of samples) {
+    if (!sampleIds.has(s.id)) continue;
+    // Coerced defensively — GeoJSON coordinates must be numbers, and
+    // Supabase/PostgREST returning some numeric types as strings is a
+    // known gotcha worth guarding against rather than silently dropping
+    // every point.
+    const lat = Number(s.latitude);
+    const lon = Number(s.longitude);
+    if (s.latitude == null || s.longitude == null || Number.isNaN(lat) || Number.isNaN(lon)) {
+      continue;
+    }
+    features.push({
       type: "Feature",
-      geometry: { type: "Point", coordinates: [s.longitude as number, s.latitude as number] },
+      geometry: { type: "Point", coordinates: [lon, lat] },
       properties: {
         id: s.id,
         primary_identifier: s.primary_identifier,
         species: s.species,
       },
-    }));
+    });
+  }
   return { type: "FeatureCollection", features };
 }
 
@@ -73,6 +84,14 @@ export function SampleMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<Popup | null>(null);
+  // Always points at the *latest* sync function. The map's one-time "load"
+  // event is wired to call whatever this points to at the time it fires,
+  // rather than closing over whatever `samples`/`layers` existed at the
+  // moment the listener was registered — otherwise, if "load" fires after
+  // data has already arrived and re-rendered this component, the very
+  // first sync would run with a stale, empty `samples` array and nothing
+  // would tell it to run again with the real data.
+  const latestSyncRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -83,6 +102,10 @@ export function SampleMap({
       zoom: 1,
     });
     map.addControl(new NavigationControl(), "top-left");
+    map.on("load", () => {
+      map.resize();
+      latestSyncRef.current();
+    });
     mapRef.current = map;
     return () => {
       map.remove();
@@ -95,80 +118,85 @@ export function SampleMap({
     if (!map) return;
 
     function syncLayers() {
-      const visibleLayers = layers.filter((l) => visibleLayerIds.has(l.id));
-      const wantedIds = new Set(visibleLayers.map((l) => l.id));
+      try {
+        const visibleLayers = layers.filter((l) => visibleLayerIds.has(l.id));
+        const wantedIds = new Set(visibleLayers.map((l) => l.id));
 
-      // Remove sources/layers for anything no longer visible.
-      for (const layer of layers) {
-        if (wantedIds.has(layer.id)) continue;
-        if (map!.getLayer(circleLayerId(layer.id))) map!.removeLayer(circleLayerId(layer.id));
-        if (map!.getSource(sourceId(layer.id))) map!.removeSource(sourceId(layer.id));
-      }
-
-      const allCoords: [number, number][] = [];
-
-      for (const layer of visibleLayers) {
-        const data = toFeatureCollection(samples, layer.sampleIds);
-        for (const f of data.features) allCoords.push(f.geometry.coordinates as [number, number]);
-
-        const existing = map!.getSource(sourceId(layer.id)) as GeoJSONSource | undefined;
-        if (existing) {
-          existing.setData(data);
-        } else {
-          map!.addSource(sourceId(layer.id), { type: "geojson", data });
+        // Remove sources/layers for anything no longer visible.
+        for (const layer of layers) {
+          if (wantedIds.has(layer.id)) continue;
+          if (map!.getLayer(circleLayerId(layer.id))) map!.removeLayer(circleLayerId(layer.id));
+          if (map!.getSource(sourceId(layer.id))) map!.removeSource(sourceId(layer.id));
         }
 
-        const isActive = layer.id === activeLayerId;
-        if (!map!.getLayer(circleLayerId(layer.id))) {
-          map!.addLayer({
-            id: circleLayerId(layer.id),
-            type: "circle",
-            source: sourceId(layer.id),
-            paint: {
-              "circle-color": layer.color,
-              "circle-radius": isActive ? 7 : 5,
-              "circle-stroke-width": isActive ? 2 : 1,
-              "circle-stroke-color": "#ffffff",
-            },
-          });
-        } else {
-          map!.setPaintProperty(circleLayerId(layer.id), "circle-radius", isActive ? 7 : 5);
-          map!.setPaintProperty(circleLayerId(layer.id), "circle-stroke-width", isActive ? 2 : 1);
+        const allCoords: [number, number][] = [];
+
+        for (const layer of visibleLayers) {
+          const data = toFeatureCollection(samples, layer.sampleIds);
+          for (const f of data.features) allCoords.push(f.geometry.coordinates as [number, number]);
+
+          const existing = map!.getSource(sourceId(layer.id)) as GeoJSONSource | undefined;
+          if (existing) {
+            existing.setData(data);
+          } else {
+            map!.addSource(sourceId(layer.id), { type: "geojson", data });
+          }
+
+          const isActive = layer.id === activeLayerId;
+          if (!map!.getLayer(circleLayerId(layer.id))) {
+            map!.addLayer({
+              id: circleLayerId(layer.id),
+              type: "circle",
+              source: sourceId(layer.id),
+              paint: {
+                "circle-color": layer.color,
+                "circle-radius": isActive ? 7 : 5,
+                "circle-stroke-width": isActive ? 2 : 1,
+                "circle-stroke-color": "#ffffff",
+              },
+            });
+          } else {
+            map!.setPaintProperty(circleLayerId(layer.id), "circle-radius", isActive ? 7 : 5);
+            map!.setPaintProperty(circleLayerId(layer.id), "circle-stroke-width", isActive ? 2 : 1);
+          }
         }
-      }
 
-      if (allCoords.length > 0) {
-        const bounds = allCoords.reduce(
-          (b, coord) => b.extend(coord),
-          new LngLatBounds(allCoords[0], allCoords[0])
-        );
-        map!.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
-      }
+        if (allCoords.length > 0) {
+          const bounds = allCoords.reduce(
+            (b, coord) => b.extend(coord),
+            new LngLatBounds(allCoords[0], allCoords[0])
+          );
+          map!.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
+        }
 
-      const interactiveLayerIds = visibleLayers.map((l) => circleLayerId(l.id));
-      map!.getCanvas().style.cursor = "";
-      map!.off("click", handleClick);
-      map!.on("click", handleClick);
+        const interactiveLayerIds = visibleLayers.map((l) => circleLayerId(l.id));
+        map!.off("click", handleClick);
+        map!.on("click", handleClick);
 
-      function handleClick(e: MapMouseEvent) {
-        const features = map!.queryRenderedFeatures(e.point, { layers: interactiveLayerIds });
-        if (!features.length) return;
-        const props = features[0].properties as { primary_identifier: string; species: string };
-        popupRef.current?.remove();
-        popupRef.current = new Popup({ closeButton: true })
-          .setLngLat((features[0].geometry as GeoJSON.Point).coordinates as [number, number])
-          .setHTML(
-            `<div style="font-size:13px"><strong>${props.primary_identifier}</strong><br/>${props.species}</div>`
-          )
-          .addTo(map!);
+        function handleClick(e: MapMouseEvent) {
+          const features = map!.queryRenderedFeatures(e.point, { layers: interactiveLayerIds });
+          if (!features.length) return;
+          const props = features[0].properties as { primary_identifier: string; species: string };
+          popupRef.current?.remove();
+          popupRef.current = new Popup({ closeButton: true })
+            .setLngLat((features[0].geometry as GeoJSON.Point).coordinates as [number, number])
+            .setHTML(
+              `<div style="font-size:13px"><strong>${props.primary_identifier}</strong><br/>${props.species}</div>`
+            )
+            .addTo(map!);
+        }
+      } catch (error) {
+        console.error("Failed to sync map layers", error);
       }
     }
 
+    latestSyncRef.current = syncLayers;
     if (map.isStyleLoaded()) {
       syncLayers();
-    } else {
-      map.once("load", syncLayers);
     }
+    // If the style isn't loaded yet, the "load" listener registered in the
+    // mount effect will call latestSyncRef.current() — which by then
+    // points at this run's syncLayers — once it's ready.
   }, [samples, layers, visibleLayerIds, activeLayerId]);
 
   return <div ref={containerRef} className="h-full w-full rounded-lg" />;
