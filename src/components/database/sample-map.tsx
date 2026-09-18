@@ -106,6 +106,7 @@ export function SampleMap({
   // (empty) one to be silently skipped forever. This flag is ours, set by
   // an event we know only fires once, so it can't flicker back to false.
   const styleReadyRef = useRef(false);
+  const lastCoordsRef = useRef<[number, number][]>([]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -179,7 +180,13 @@ export function SampleMap({
         }
 
         onFeatureCounts?.(featureCounts);
+        lastCoordsRef.current = allCoords;
 
+        // A flex/grid container's final size can settle after the map's
+        // canvas was first measured, leaving MapLibre's internal notion of
+        // its own dimensions stale — resize() re-reads the real size so
+        // fitBounds' math (and the visible canvas) both match reality.
+        map!.resize();
         if (allCoords.length > 0) {
           const bounds = allCoords.reduce(
             (b, coord) => b.extend(coord),
@@ -220,5 +227,28 @@ export function SampleMap({
     // points at this run's syncLayers — once it's ready.
   }, [samples, layers, visibleLayerIds, activeLayerId, onSyncError, onFeatureCounts]);
 
-  return <div ref={containerRef} className="h-full w-full rounded-lg" />;
+  function fitToData() {
+    const map = mapRef.current;
+    const coords = lastCoordsRef.current;
+    if (!map || coords.length === 0) return;
+    map.resize();
+    const bounds = coords.reduce(
+      (b, coord) => b.extend(coord),
+      new LngLatBounds(coords[0], coords[0])
+    );
+    map.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full rounded-lg" />
+      <button
+        type="button"
+        onClick={fitToData}
+        className="absolute right-2 bottom-8 z-10 rounded-md border border-border bg-card px-2 py-1 text-xs shadow-sm hover:bg-accent"
+      >
+        Fit to data
+      </button>
+    </div>
+  );
 }
