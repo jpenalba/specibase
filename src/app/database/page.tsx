@@ -21,6 +21,8 @@ export default function DatabasePage() {
     new Set([ALL_LAYER_ID])
   );
   const [activeLayerId, setActiveLayerId] = useState<string>(ALL_LAYER_ID);
+  const [mapSyncError, setMapSyncError] = useState<string | null>(null);
+  const [mapFeatureCounts, setMapFeatureCounts] = useState<Record<string, number>>({});
   const { selected, toggle } = useOptionalFields();
 
   useEffect(() => {
@@ -109,6 +111,20 @@ export default function DatabasePage() {
           in the Supabase SQL Editor.
         </div>
       )}
+      {mapSyncError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          The map couldn&apos;t draw the points: {mapSyncError}
+        </div>
+      )}
+      {!loading && !mapSyncError && (
+        <p className="text-sm text-muted-foreground">
+          Map points by layer:{" "}
+          {allLayers
+            .filter((l) => visibleLayerIds.has(l.id))
+            .map((l) => `${l.label} ${mapFeatureCounts[l.id] ?? 0}/${l.sampleIds.size}`)
+            .join(", ") || "no layers ticked visible"}
+        </p>
+      )}
 
       <div className="flex h-[55vh] min-h-[420px] gap-4">
         <div className="flex-1 overflow-hidden rounded-lg border border-border">
@@ -117,6 +133,8 @@ export default function DatabasePage() {
             layers={allLayers}
             visibleLayerIds={visibleLayerIds}
             activeLayerId={activeLayerId}
+            onSyncError={setMapSyncError}
+            onFeatureCounts={setMapFeatureCounts}
           />
         </div>
         <div className="w-64 shrink-0">

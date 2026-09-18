@@ -75,11 +75,18 @@ export function SampleMap({
   layers,
   visibleLayerIds,
   activeLayerId,
+  onSyncError,
+  onFeatureCounts,
 }: {
   samples: SampleRecord[];
   layers: MapLayer[];
   visibleLayerIds: Set<string>;
   activeLayerId: string;
+  // Both optional escape hatches so map-internal problems surface directly
+  // on the page instead of only in the browser console — most people using
+  // this app won't have DevTools open.
+  onSyncError?: (message: string) => void;
+  onFeatureCounts?: (counts: Record<string, number>) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -130,9 +137,11 @@ export function SampleMap({
         }
 
         const allCoords: [number, number][] = [];
+        const featureCounts: Record<string, number> = {};
 
         for (const layer of visibleLayers) {
           const data = toFeatureCollection(samples, layer.sampleIds);
+          featureCounts[layer.id] = data.features.length;
           for (const f of data.features) allCoords.push(f.geometry.coordinates as [number, number]);
 
           const existing = map!.getSource(sourceId(layer.id)) as GeoJSONSource | undefined;
@@ -161,6 +170,8 @@ export function SampleMap({
           }
         }
 
+        onFeatureCounts?.(featureCounts);
+
         if (allCoords.length > 0) {
           const bounds = allCoords.reduce(
             (b, coord) => b.extend(coord),
@@ -186,7 +197,9 @@ export function SampleMap({
             .addTo(map!);
         }
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown map error";
         console.error("Failed to sync map layers", error);
+        onSyncError?.(message);
       }
     }
 
@@ -197,7 +210,7 @@ export function SampleMap({
     // If the style isn't loaded yet, the "load" listener registered in the
     // mount effect will call latestSyncRef.current() — which by then
     // points at this run's syncLayers — once it's ready.
-  }, [samples, layers, visibleLayerIds, activeLayerId]);
+  }, [samples, layers, visibleLayerIds, activeLayerId, onSyncError, onFeatureCounts]);
 
   return <div ref={containerRef} className="h-full w-full rounded-lg" />;
 }
