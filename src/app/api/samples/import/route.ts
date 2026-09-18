@@ -10,6 +10,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ errors: ["No rows to import"] }, { status: 400 });
   }
 
-  const result = insertSamplesBulk(rows);
+  const result = await insertSamplesBulk(rows);
   return NextResponse.json(result, { status: 200 });
 }

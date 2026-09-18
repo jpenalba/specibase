@@ -1,12 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { getSupabase } from "./supabase";
 import { RawRow, validateRow } from "./validation";
 
-// Local-file-backed store for the prototyping phase, deliberately kept
-// behind the same shape a real Supabase/Postgres table would have. This
-// file is the only thing that needs to change when we swap in a real
-// database — nothing in the API routes or UI depends on it being JSON.
+const TABLE = "samples";
 
 export type SampleRecord = {
   id: string;
@@ -18,63 +13,60 @@ export type SampleRecord = {
   [optionalField: string]: string | number;
 };
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "samples.json");
-
-function ensureStore(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, "[]", "utf-8");
-  }
+export async function readSamples(): Promise<SampleRecord[]> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SampleRecord[];
 }
 
-export function readSamples(): SampleRecord[] {
-  ensureStore();
-  const raw = fs.readFileSync(DATA_FILE, "utf-8");
-  try {
-    return JSON.parse(raw) as SampleRecord[];
-  } catch {
-    return [];
-  }
-}
-
-function writeSamples(samples: SampleRecord[]): void {
-  ensureStore();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(samples, null, 2), "utf-8");
-}
-
-export function existingIdentifiers(): Set<string> {
-  return new Set(readSamples().map((s) => s.primary_identifier));
+export async function existingIdentifiers(): Promise<Set<string>> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select("primary_identifier");
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((row) => row.primary_identifier as string));
 }
 
 export type InsertResult =
   | { ok: true; sample: SampleRecord }
   | { ok: false; errors: string[] };
 
-export function insertSample(row: RawRow): InsertResult {
-  const samples = readSamples();
-  const existingIds = new Set(samples.map((s) => s.primary_identifier));
+export async function insertSample(row: RawRow): Promise<InsertResult> {
+  const existingIds = await existingIdentifiers();
   const { errors } = validateRow(row, existingIds);
   if (errors.length > 0) {
     return { ok: false, errors };
   }
 
   const { primary_identifier, species, latitude, longitude, ...rest } = row;
-  const sample: SampleRecord = {
-    id: randomUUID(),
-    created_at: new Date().toISOString(),
-    primary_identifier: primary_identifier.trim(),
-    species: species.trim(),
-    latitude: Number(latitude),
-    longitude: Number(longitude),
-    ...rest,
-  };
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .insert({
+      primary_identifier: primary_identifier.trim(),
+      species: species.trim(),
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      ...rest,
+    })
+    .select()
+    .single();
 
-  samples.push(sample);
-  writeSamples(samples);
-  return { ok: true, sample };
+  if (error) {
+    // Unique-violation race (two imports landing the same ID at once) —
+    // everything else was already caught by validateRow above.
+    if (error.code === "23505") {
+      return {
+        ok: false,
+        errors: [`Sample ID "${primary_identifier.trim()}" already exists`],
+      };
+    }
+    return { ok: false, errors: [error.message] };
+  }
+
+  return { ok: true, sample: data as SampleRecord };
 }
 
 export type BulkImportResult = {
@@ -85,18 +77,20 @@ export type BulkImportResult = {
 // Inserts rows one at a time (rather than validating all up front then
 // writing once) so that a duplicate ID *within the same file* is caught
 // against rows already inserted earlier in this same import.
-export function insertSamplesBulk(rows: RawRow[]): BulkImportResult {
+export async function insertSamplesBulk(
+  rows: RawRow[]
+): Promise<BulkImportResult> {
   const inserted: SampleRecord[] = [];
   const skipped: { row: number; errors: string[] }[] = [];
 
-  rows.forEach((row, index) => {
-    const result = insertSample(row);
+  for (const [index, row] of rows.entries()) {
+    const result = await insertSample(row);
     if (result.ok) {
       inserted.push(result.sample);
     } else {
       skipped.push({ row: index, errors: result.errors });
     }
-  });
+  }
 
   return { inserted, skipped };
 }
