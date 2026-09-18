@@ -62,13 +62,15 @@ const BASEMAPS: Record<
   plain: {
     label: "Plain",
     attribution: "",
-    style: {
-      version: 8,
-      sources: {},
-      layers: [{ id: "base", type: "background", paint: { "background-color": "#e5e2da" } }],
-    },
+    // No sources or layers at all — the WebGL canvas renders fully
+    // transparent, and the plain gray/white color comes from the
+    // container's own CSS background instead (set below). Simpler and
+    // more robust than relying on a MapLibre "background" style layer.
+    style: { version: 8, sources: {}, layers: [] },
   },
 };
+
+const PLAIN_BACKGROUND = "#e5e2da";
 
 function pointFor(s: SampleRecord): [number, number] | null {
   const lat = Number(s.latitude);
@@ -199,6 +201,10 @@ export function SampleMap({
     const map = mapRef.current;
     if (!map) return;
     map.setStyle(BASEMAPS[basemap].style as Parameters<MapLibreMap["setStyle"]>[0]);
+    if (containerRef.current) {
+      containerRef.current.style.backgroundColor =
+        basemap === "plain" ? PLAIN_BACKGROUND : "";
+    }
   }, [basemap]);
 
   useEffect(() => {
@@ -284,6 +290,13 @@ export function SampleMap({
       composite.height = height;
       const ctx = composite.getContext("2d");
       if (!ctx) throw new Error("Canvas is not supported in this browser");
+      // The Plain basemap's WebGL canvas is fully transparent (its color
+      // comes from CSS instead — see the basemap-switch effect), so that
+      // color needs painting in manually before the canvas is drawn on top.
+      if (basemap === "plain") {
+        ctx.fillStyle = PLAIN_BACKGROUND;
+        ctx.fillRect(0, 0, width, height);
+      }
       ctx.drawImage(mapCanvas, 0, 0, width, height);
 
       // Markers are DOM elements, invisible to the WebGL canvas — redrawn
@@ -307,8 +320,7 @@ export function SampleMap({
       const imageData = composite.toDataURL("image/png");
 
       const { jsPDF } = await import("jspdf");
-      const orientation = width >= height ? "landscape" : "portrait";
-      const doc = new jsPDF({ orientation, unit: "pt", format: "a4" });
+      const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 32;

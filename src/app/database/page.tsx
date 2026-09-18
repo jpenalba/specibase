@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SampleRecord } from "@/lib/samples-store";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
 import { buildLayers, ALL_LAYER_ID } from "@/lib/layers";
-import { getVisibleColumns, ALL_FIELDS } from "@/lib/fields";
+import { getVisibleColumns } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
 import { SampleMap } from "@/components/database/sample-map";
@@ -90,7 +90,7 @@ export default function DatabasePage() {
   }
 
   function exportCsv() {
-    const csv = samplesToCsv(tableSamples, ALL_FIELDS);
+    const csv = samplesToCsv(tableSamples, popupColumns);
     const slug = activeLayer.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     downloadTextFile(`specibase-${slug || "export"}.csv`, csv, "text/csv;charset=utf-8;");
   }

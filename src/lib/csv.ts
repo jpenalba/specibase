@@ -6,9 +6,8 @@ function csvEscape(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-// Exports every field, not just the ones currently ticked visible in the
-// table — a "download my data" action should give you everything, not
-// whatever subset a display toggle happened to be set to.
+// `columns` is caller-supplied rather than hardcoded to ALL_FIELDS so the
+// export can mirror whatever's currently ticked visible in the table.
 export function samplesToCsv(samples: SampleRecord[], columns: FieldDef[]): string {
   const header = columns.map((c) => csvEscape(c.label)).join(",");
   const rows = samples.map((sample) =>
