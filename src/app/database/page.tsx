@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { SampleRecord } from "@/lib/samples-store";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
 import { buildLayers, ALL_LAYER_ID } from "@/lib/layers";
-import { getVisibleColumns } from "@/lib/fields";
+import { getVisibleColumns, ALL_FIELDS } from "@/lib/fields";
+import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
 import { SampleMap } from "@/components/database/sample-map";
 import { LayerPanel } from "@/components/database/layer-panel";
 import { SampleTable } from "@/components/samples/sample-table";
 import { FieldPicker } from "@/components/samples/field-picker";
+import { Button } from "@/components/ui/button";
 
 export default function DatabasePage() {
   const [samples, setSamples] = useState<SampleRecord[]>([]);
@@ -87,6 +89,12 @@ export default function DatabasePage() {
     });
   }
 
+  function exportCsv() {
+    const csv = samplesToCsv(tableSamples, ALL_FIELDS);
+    const slug = activeLayer.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    downloadTextFile(`specibase-${slug || "export"}.csv`, csv, "text/csv;charset=utf-8;");
+  }
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 sm:p-10">
       <div>
@@ -141,14 +149,19 @@ export default function DatabasePage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="font-medium">{activeLayer.label}</h2>
-          <p className="text-sm text-muted-foreground">
-            {tableSamples.length} sample{tableSamples.length === 1 ? "" : "s"}
-            {tableSamples.length > 0 &&
-              ` (${mappableCount} with map coordinates)`}
-          </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="font-medium">{activeLayer.label}</h2>
+            <p className="text-sm text-muted-foreground">
+              {tableSamples.length} sample{tableSamples.length === 1 ? "" : "s"}
+              {tableSamples.length > 0 &&
+                ` (${mappableCount} with map coordinates)`}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={tableSamples.length === 0}>
+            Export CSV
+          </Button>
         </div>
         <FieldPicker selected={selected} onToggle={toggle} />
       </div>

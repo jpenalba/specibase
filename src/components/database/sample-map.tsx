@@ -1,32 +1,73 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds } from "maplibre-gl";
 import { SampleRecord } from "@/lib/samples-store";
 import { MapLayer } from "@/lib/layers";
 import { FieldDef } from "@/lib/fields";
 import { formatToDDMMYYYY } from "@/lib/dates";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-// No API key required — OpenStreetMap's raster tiles work with zero setup,
-// which matters for a lab tool that should run the moment it's deployed.
-// Their usage policy isn't meant for heavy production traffic, though: if
-// this gets real day-to-day use, switch to a proper provider (MapTiler,
-// Stadia Maps, Mapbox) with its own key.
-const OSM_STYLE = {
-  version: 8 as const,
-  sources: {
-    osm: {
-      type: "raster" as const,
-      tiles: [
-        "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution: "&copy; OpenStreetMap contributors",
+// Neither of these needs an API key, which matters for a lab tool that
+// should run the moment it's deployed — but neither is meant for heavy
+// production traffic. Switch to a proper keyed provider (MapTiler, Stadia
+// Maps, Mapbox) if this gets real day-to-day use.
+const STREETS_SOURCE = {
+  type: "raster" as const,
+  tiles: [
+    "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  ],
+  tileSize: 256,
+  // A plain "©" rather than the HTML entity "&copy;" — this string is used
+  // both in MapLibre's on-page attribution control (which renders HTML)
+  // and as plain text in the PDF export, and jsPDF doesn't decode entities.
+  attribution: "© OpenStreetMap contributors",
+};
+const SATELLITE_SOURCE = {
+  type: "raster" as const,
+  tiles: [
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  ],
+  tileSize: 256,
+  attribution: "Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+};
+
+type BasemapId = "streets" | "satellite" | "plain";
+
+const BASEMAPS: Record<
+  BasemapId,
+  { label: string; attribution: string; style: object }
+> = {
+  streets: {
+    label: "Streets",
+    attribution: STREETS_SOURCE.attribution,
+    style: {
+      version: 8,
+      sources: { base: STREETS_SOURCE },
+      layers: [{ id: "base", type: "raster", source: "base" }],
     },
   },
-  layers: [{ id: "osm", type: "raster" as const, source: "osm" }],
+  satellite: {
+    label: "Satellite",
+    attribution: SATELLITE_SOURCE.attribution,
+    style: {
+      version: 8,
+      sources: { base: SATELLITE_SOURCE },
+      layers: [{ id: "base", type: "raster", source: "base" }],
+    },
+  },
+  plain: {
+    label: "Plain",
+    attribution: "",
+    style: {
+      version: 8,
+      sources: {},
+      layers: [{ id: "base", type: "background", paint: { "background-color": "#e5e2da" } }],
+    },
+  },
 };
 
 function pointFor(s: SampleRecord): [number, number] | null {
@@ -36,6 +77,31 @@ function pointFor(s: SampleRecord): [number, number] | null {
     return null;
   }
   return [lon, lat];
+}
+
+type PointInfo = { sample: SampleRecord; point: [number, number]; color: string; size: number };
+
+// Shared by the marker-rendering effect and the PDF export, so what gets
+// drawn on screen and what gets drawn into the exported image can't drift
+// apart into two different lists of points.
+function computeVisiblePoints(
+  samples: SampleRecord[],
+  layers: MapLayer[],
+  visibleLayerIds: Set<string>,
+  activeLayerId: string
+): PointInfo[] {
+  const points: PointInfo[] = [];
+  for (const layer of layers) {
+    if (!visibleLayerIds.has(layer.id)) continue;
+    const isActive = layer.id === activeLayerId;
+    for (const sample of samples) {
+      if (!layer.sampleIds.has(sample.id)) continue;
+      const point = pointFor(sample);
+      if (!point) continue;
+      points.push({ sample, point, color: layer.color, size: isActive ? 16 : 12 });
+    }
+  }
+  return points;
 }
 
 function escapeHtml(value: string): string {
@@ -70,6 +136,13 @@ function buildPopupHtml(sample: SampleRecord, columns: FieldDef[]): string {
   return `<div style="font-size:13px;min-width:200px;">${rows}</div>`;
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return match
+    ? [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)]
+    : [0, 0, 0];
+}
+
 export function SampleMap({
   samples,
   layers,
@@ -94,14 +167,20 @@ export function SampleMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const lastCoordsRef = useRef<[number, number][]>([]);
+  const [basemap, setBasemap] = useState<BasemapId>("streets");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: OSM_STYLE,
+      style: BASEMAPS.streets.style as ConstructorParameters<typeof MapLibreMap>[0]["style"],
       center: [0, 0],
       zoom: 1,
+      // Needed to read the canvas back out as an image for PDF export —
+      // WebGL clears its buffer after each frame by default, which would
+      // otherwise make toDataURL() return a blank image most of the time.
+      canvasContextAttributes: { preserveDrawingBuffer: true },
     });
     map.addControl(new NavigationControl(), "top-left");
     mapRef.current = map;
@@ -112,6 +191,15 @@ export function SampleMap({
       mapRef.current = null;
     };
   }, []);
+
+  // Switching the basemap only ever calls setStyle — it never touches
+  // markers (plain DOM elements, not part of the style), so points never
+  // disappear or need rebuilding when this runs.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setStyle(BASEMAPS[basemap].style as Parameters<MapLibreMap["setStyle"]>[0]);
+  }, [basemap]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -124,38 +212,27 @@ export function SampleMap({
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
 
+      const points = computeVisiblePoints(samples, layers, visibleLayerIds, activeLayerId);
       const coords: [number, number][] = [];
 
-      for (const layer of layers) {
-        if (!visibleLayerIds.has(layer.id)) continue;
-        const isActive = layer.id === activeLayerId;
+      for (const { sample, point, color, size } of points) {
+        coords.push(point);
 
-        for (const sample of samples) {
-          if (!layer.sampleIds.has(sample.id)) continue;
-          const point = pointFor(sample);
-          if (!point) continue;
-          coords.push(point);
+        const el = document.createElement("div");
+        el.style.width = `${size}px`;
+        el.style.height = `${size}px`;
+        el.style.borderRadius = "50%";
+        el.style.backgroundColor = color;
+        el.style.border = "2px solid #ffffff";
+        el.style.boxShadow = "0 0 2px rgba(0,0,0,0.5)";
+        el.style.cursor = "pointer";
 
-          const el = document.createElement("div");
-          const size = isActive ? 16 : 12;
-          el.style.width = `${size}px`;
-          el.style.height = `${size}px`;
-          el.style.borderRadius = "50%";
-          el.style.backgroundColor = layer.color;
-          el.style.border = "2px solid #ffffff";
-          el.style.boxShadow = "0 0 2px rgba(0,0,0,0.5)";
-          el.style.cursor = "pointer";
+        const popup = new Popup({ offset: size / 2 + 4, closeButton: true }).setHTML(
+          buildPopupHtml(sample, popupColumns)
+        );
 
-          const popup = new Popup({ offset: size / 2 + 4, closeButton: true }).setHTML(
-            buildPopupHtml(sample, popupColumns)
-          );
-
-          const marker = new Marker({ element: el })
-            .setLngLat(point)
-            .setPopup(popup)
-            .addTo(map);
-          markersRef.current.push(marker);
-        }
+        const marker = new Marker({ element: el }).setLngLat(point).setPopup(popup).addTo(map);
+        markersRef.current.push(marker);
       }
 
       lastCoordsRef.current = coords;
@@ -187,16 +264,129 @@ export function SampleMap({
     map.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
   }
 
+  async function exportPdf() {
+    const map = mapRef.current;
+    if (!map) return;
+    setExporting(true);
+    try {
+      // Force a fresh frame before reading the canvas back out, otherwise
+      // a stale or partially-cleared buffer can get captured.
+      map.triggerRepaint();
+      await new Promise((resolve) => map.once("render", resolve));
+
+      const mapCanvas = map.getCanvas();
+      const dpr = window.devicePixelRatio || 1;
+      const width = mapCanvas.width;
+      const height = mapCanvas.height;
+
+      const composite = document.createElement("canvas");
+      composite.width = width;
+      composite.height = height;
+      const ctx = composite.getContext("2d");
+      if (!ctx) throw new Error("Canvas is not supported in this browser");
+      ctx.drawImage(mapCanvas, 0, 0, width, height);
+
+      // Markers are DOM elements, invisible to the WebGL canvas — redrawn
+      // here at their true projected position so the export matches what's
+      // actually on screen.
+      const points = computeVisiblePoints(samples, layers, visibleLayerIds, activeLayerId);
+      for (const { point, color, size } of points) {
+        const projected = map.project(point);
+        const x = projected.x * dpr;
+        const y = projected.y * dpr;
+        const radius = (size / 2) * dpr;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 2 * dpr;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+      }
+
+      const imageData = composite.toDataURL("image/png");
+
+      const { jsPDF } = await import("jspdf");
+      const orientation = width >= height ? "landscape" : "portrait";
+      const doc = new jsPDF({ orientation, unit: "pt", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 32;
+
+      doc.setFontSize(14);
+      doc.setTextColor(20, 20, 20);
+      doc.text("Specibase — map export", margin, margin);
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text(new Date().toLocaleString(), margin, margin + 14);
+
+      const imageTop = margin + 28;
+      const legendLayers = layers.filter((l) => visibleLayerIds.has(l.id));
+      const legendHeight = 16 + legendLayers.length * 14;
+      const maxImgWidth = pageWidth - margin * 2;
+      const maxImgHeight = pageHeight - imageTop - margin - legendHeight;
+      const scale = Math.min(maxImgWidth / width, maxImgHeight / height);
+      const imgWidth = width * scale;
+      const imgHeight = height * scale;
+
+      doc.addImage(imageData, "PNG", margin, imageTop, imgWidth, imgHeight);
+
+      let legendY = imageTop + imgHeight + 20;
+      doc.setFontSize(9);
+      for (const layer of legendLayers) {
+        const [r, g, b] = hexToRgb(layer.color);
+        doc.setFillColor(r, g, b);
+        doc.circle(margin + 4, legendY - 3, 4, "F");
+        doc.setTextColor(30, 30, 30);
+        doc.text(`${layer.label} (${layer.sampleIds.size})`, margin + 14, legendY);
+        legendY += 14;
+      }
+
+      const attribution = BASEMAPS[basemap].attribution;
+      if (attribution) {
+        doc.setFontSize(7);
+        doc.setTextColor(140, 140, 140);
+        doc.text(attribution, margin, pageHeight - 12);
+      }
+
+      doc.save(`specibase-map-${Date.now()}.pdf`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown export error";
+      console.error("Failed to export map to PDF", error);
+      onSyncError?.(`Export failed: ${message}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full rounded-lg" />
-      <button
-        type="button"
-        onClick={fitToData}
-        className="absolute right-2 bottom-8 z-10 rounded-md border border-border bg-card px-2 py-1 text-xs shadow-sm hover:bg-accent"
-      >
-        Fit to data
-      </button>
+
+      <div className="absolute top-2 right-2 z-10 flex overflow-hidden rounded-md border border-border bg-card shadow-sm">
+        {(Object.keys(BASEMAPS) as BasemapId[]).map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setBasemap(id)}
+            className={cn(
+              "px-2 py-1 text-xs",
+              basemap === id ? "bg-primary text-primary-foreground" : "hover:bg-accent"
+            )}
+          >
+            {BASEMAPS[id].label}
+          </button>
+        ))}
+      </div>
+
+      <div className="absolute right-2 bottom-8 z-10 flex gap-2">
+        <Button variant="outline" size="sm" onClick={fitToData} className="bg-card shadow-sm">
+          Fit to data
+        </Button>
+        <Button variant="outline" size="sm" onClick={exportPdf} disabled={exporting} className="bg-card shadow-sm">
+          {exporting ? "Exporting..." : "Export PDF"}
+        </Button>
+      </div>
     </div>
   );
 }
