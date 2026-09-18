@@ -15,8 +15,8 @@ function isBlank(value: string | undefined): boolean {
   return value === undefined || value.trim() === "";
 }
 
-// Shared by both the client-side CSV preview and the server-side commit,
-// so "what counts as a valid row" is defined in exactly one place.
+// Shared by both the client-side staging preview and the server-side
+// commit, so "what counts as a valid row" is defined in exactly one place.
 export function validateRow(
   row: RawRow,
   existingIds: Set<string>
@@ -36,14 +36,26 @@ export function validateRow(
     errors.push("Species is required");
   }
 
-  const lat = Number(row.latitude);
-  if (isBlank(row.latitude) || Number.isNaN(lat) || lat < -90 || lat > 90) {
-    errors.push("Latitude must be a number between -90 and 90");
-  }
+  // Coordinates aren't required on their own — plenty of experimental work
+  // has no meaningful lat/lon — but every sample needs to be locatable
+  // *somehow*, so either both coordinates or a locality must be given.
+  const latProvided = !isBlank(row.latitude);
+  const lonProvided = !isBlank(row.longitude);
+  const localityProvided = !isBlank(row.locality);
 
-  const lng = Number(row.longitude);
-  if (isBlank(row.longitude) || Number.isNaN(lng) || lng < -180 || lng > 180) {
-    errors.push("Longitude must be a number between -180 and 180");
+  if (latProvided !== lonProvided) {
+    errors.push("Latitude and longitude must both be provided, or both left blank");
+  } else if (latProvided && lonProvided) {
+    const lat = Number(row.latitude);
+    if (Number.isNaN(lat) || lat < -90 || lat > 90) {
+      errors.push("Latitude must be a number between -90 and 90");
+    }
+    const lng = Number(row.longitude);
+    if (Number.isNaN(lng) || lng < -180 || lng > 180) {
+      errors.push("Longitude must be a number between -180 and 180");
+    }
+  } else if (!localityProvided) {
+    errors.push("Provide either latitude & longitude, or a locality");
   }
 
   for (const field of OPTIONAL_FIELDS) {
@@ -62,5 +74,12 @@ export function buildTemplateHeaders(selectedOptionalKeys: string[]): string[] {
   const optional = OPTIONAL_FIELDS.filter((f) =>
     selectedOptionalKeys.includes(f.key)
   ).map((f) => f.key);
-  return ["primary_identifier", "species", "latitude", "longitude", ...optional];
+  return [
+    "primary_identifier",
+    "species",
+    "latitude",
+    "longitude",
+    "locality",
+    ...optional,
+  ];
 }

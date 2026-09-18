@@ -1,8 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { REQUIRED_FIELDS, optionalFieldByKey } from "@/lib/fields";
+import {
+  REQUIRED_FIELDS,
+  LOCATION_FIELDS,
+  optionalFieldByKey,
+} from "@/lib/fields";
 import { DATE_FORMAT_LABEL } from "@/lib/dates";
+import { RawRow, validateRow } from "@/lib/validation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,15 +23,16 @@ import {
 
 export function AddSampleDialog({
   visibleOptionalKeys,
-  onCreated,
+  takenIdentifiers,
+  onStage,
 }: {
   visibleOptionalKeys: string[];
-  onCreated: () => void;
+  takenIdentifiers: string[];
+  onStage: (row: RawRow) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<RawRow>({});
   const [errors, setErrors] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
 
   const optionalFields = visibleOptionalKeys
     .map((key) => optionalFieldByKey(key))
@@ -36,27 +42,17 @@ export function AddSampleDialog({
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitting(true);
-    setErrors([]);
-    try {
-      const res = await fetch("/api/samples", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setErrors(data.errors ?? ["Something went wrong"]);
-        return;
-      }
-      setValues({});
-      setOpen(false);
-      onCreated();
-    } finally {
-      setSubmitting(false);
+    const { errors: rowErrors } = validateRow(values, new Set(takenIdentifiers));
+    if (rowErrors.length > 0) {
+      setErrors(rowErrors);
+      return;
     }
+    onStage(values);
+    setValues({});
+    setErrors([]);
+    setOpen(false);
   }
 
   return (
@@ -68,8 +64,8 @@ export function AddSampleDialog({
         <DialogHeader>
           <DialogTitle>Add sample</DialogTitle>
           <DialogDescription>
-            Sample ID, species, and coordinates are required. Other fields
-            shown here match the columns currently visible in the table.
+            This stages the sample below — it isn&apos;t saved to the
+            database until you upload the staged batch.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
@@ -88,31 +84,49 @@ export function AddSampleDialog({
                 <Label htmlFor={field.key}>{field.label} *</Label>
                 <Input
                   id={field.key}
-                  type={field.type === "number" ? "number" : "text"}
-                  step={field.type === "number" ? "any" : undefined}
-                  required
-                  value={values[field.key] ?? ""}
-                  onChange={(e) => update(field.key, e.target.value)}
-                />
-              </div>
-            ))}
-            {optionalFields.map((field) => (
-              <div key={field.key} className="grid gap-1.5">
-                <Label htmlFor={field.key}>{field.label}</Label>
-                <Input
-                  id={field.key}
-                  type="text"
-                  placeholder={field.type === "date" ? DATE_FORMAT_LABEL : undefined}
                   value={values[field.key] ?? ""}
                   onChange={(e) => update(field.key, e.target.value)}
                 />
               </div>
             ))}
           </div>
+
+          <div className="grid gap-3 rounded-md border border-border p-3">
+            <p className="text-xs text-muted-foreground">
+              Provide either latitude &amp; longitude, or a locality.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {LOCATION_FIELDS.map((field) => (
+                <div key={field.key} className="grid gap-1.5">
+                  <Label htmlFor={field.key}>{field.label}</Label>
+                  <Input
+                    id={field.key}
+                    value={values[field.key] ?? ""}
+                    onChange={(e) => update(field.key, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {optionalFields.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {optionalFields.map((field) => (
+                <div key={field.key} className="grid gap-1.5">
+                  <Label htmlFor={field.key}>{field.label}</Label>
+                  <Input
+                    id={field.key}
+                    placeholder={field.type === "date" ? DATE_FORMAT_LABEL : undefined}
+                    value={values[field.key] ?? ""}
+                    onChange={(e) => update(field.key, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
           <DialogFooter>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving..." : "Save sample"}
-            </Button>
+            <Button type="submit">Stage sample</Button>
           </DialogFooter>
         </form>
       </DialogContent>

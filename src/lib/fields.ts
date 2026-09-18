@@ -7,13 +7,20 @@ export type FieldDef = {
   description?: string;
 };
 
-// The bare minimum every sample must have. These columns are always
-// present in the table and always included in the CSV template.
+// Always required, always shown, never toggleable.
 export const REQUIRED_FIELDS: FieldDef[] = [
   { key: "primary_identifier", label: "Sample ID", type: "text" },
   { key: "species", label: "Species", type: "text" },
+];
+
+// Not each individually required, but the group as a whole is: either
+// latitude+longitude or locality must be provided (see validateRow).
+// Always shown together and never part of the optional-field toggle —
+// hiding all three would make it impossible to satisfy that requirement.
+export const LOCATION_FIELDS: FieldDef[] = [
   { key: "latitude", label: "Latitude", type: "number" },
   { key: "longitude", label: "Longitude", type: "number" },
+  { key: "locality", label: "Locality", type: "text" },
 ];
 
 // Everything else is opt-in per lab/project: tick which of these to
@@ -23,7 +30,6 @@ export const REQUIRED_FIELDS: FieldDef[] = [
 export const OPTIONAL_FIELDS: FieldDef[] = [
   { key: "collection_date", label: "Collection date", type: "date" },
   { key: "country", label: "Country", type: "text" },
-  { key: "locality", label: "Locality", type: "text" },
   {
     key: "additional_number",
     label: "Additional number",
@@ -40,12 +46,15 @@ export const OPTIONAL_FIELDS: FieldDef[] = [
 export const DEFAULT_OPTIONAL_KEYS = [
   "collection_date",
   "country",
-  "locality",
   "additional_number",
   "notes",
 ];
 
-export const ALL_FIELDS: FieldDef[] = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS];
+export const ALL_FIELDS: FieldDef[] = [
+  ...REQUIRED_FIELDS,
+  ...LOCATION_FIELDS,
+  ...OPTIONAL_FIELDS,
+];
 
 export function optionalFieldByKey(key: string): FieldDef | undefined {
   return OPTIONAL_FIELDS.find((f) => f.key === key);

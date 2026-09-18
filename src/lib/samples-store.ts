@@ -10,9 +10,9 @@ export type SampleRecord = {
   created_at: string;
   primary_identifier: string;
   species: string;
-  latitude: number;
-  longitude: number;
-  [optionalField: string]: string | number;
+  latitude?: number;
+  longitude?: number;
+  [optionalField: string]: string | number | undefined;
 };
 
 export async function readSamples(): Promise<SampleRecord[]> {
@@ -58,15 +58,19 @@ export async function insertSample(row: RawRow): Promise<InsertResult> {
   }
 
   const { primary_identifier, species, latitude, longitude, ...rest } = row;
+  const insertValues: Record<string, string | number> = {
+    primary_identifier: primary_identifier.trim(),
+    species: species.trim(),
+    ...normalizeDatesForStorage(rest),
+  };
+  // Coordinates are optional (see validateRow) — omit them rather than
+  // storing Number("") as 0, which would be a real, wrong latitude.
+  if (latitude?.trim()) insertValues.latitude = Number(latitude);
+  if (longitude?.trim()) insertValues.longitude = Number(longitude);
+
   const { data, error } = await getSupabase()
     .from(TABLE)
-    .insert({
-      primary_identifier: primary_identifier.trim(),
-      species: species.trim(),
-      latitude: Number(latitude),
-      longitude: Number(longitude),
-      ...normalizeDatesForStorage(rest),
-    })
+    .insert(insertValues)
     .select()
     .single();
 
