@@ -169,6 +169,7 @@ export function SampleMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const lastCoordsRef = useRef<[number, number][]>([]);
+  const plainOverlayRef = useRef<HTMLDivElement | null>(null);
   const [basemap, setBasemap] = useState<BasemapId>("streets");
   const [exporting, setExporting] = useState(false);
 
@@ -186,9 +187,32 @@ export function SampleMap({
     });
     map.addControl(new NavigationControl(), "top-left");
     mapRef.current = map;
+
+    // The Plain basemap's color comes from this plain DOM element, not
+    // from the WebGL canvas — whether an "empty" style actually renders
+    // as transparent (vs. an opaque default clear color) isn't reliably
+    // the same across browsers/GPUs, so this sidesteps that entirely.
+    // Markers live *inside* the canvas container (siblings of the canvas
+    // itself), not as siblings of it — appending to the map's outer
+    // container would stack this overlay above the canvas container as a
+    // whole, hiding markers along with it. Appending inside the canvas
+    // container instead, right after the canvas but before any markers
+    // exist yet, puts it above the canvas and below markers by plain DOM
+    // order alone, with no z-index bookkeeping needed.
+    const overlay = document.createElement("div");
+    overlay.style.position = "absolute";
+    overlay.style.inset = "0";
+    overlay.style.pointerEvents = "none";
+    overlay.style.backgroundColor = PLAIN_BACKGROUND;
+    overlay.style.display = "none";
+    map.getCanvasContainer().appendChild(overlay);
+    plainOverlayRef.current = overlay;
+
     return () => {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
+      overlay.remove();
+      plainOverlayRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -201,9 +225,8 @@ export function SampleMap({
     const map = mapRef.current;
     if (!map) return;
     map.setStyle(BASEMAPS[basemap].style as Parameters<MapLibreMap["setStyle"]>[0]);
-    if (containerRef.current) {
-      containerRef.current.style.backgroundColor =
-        basemap === "plain" ? PLAIN_BACKGROUND : "";
+    if (plainOverlayRef.current) {
+      plainOverlayRef.current.style.display = basemap === "plain" ? "block" : "none";
     }
   }, [basemap]);
 
