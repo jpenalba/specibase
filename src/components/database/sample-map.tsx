@@ -99,6 +99,13 @@ export function SampleMap({
   // first sync would run with a stale, empty `samples` array and nothing
   // would tell it to run again with the real data.
   const latestSyncRef = useRef<() => void>(() => {});
+  // Set once, permanently, the first time the map's "load" event fires.
+  // MapLibre's own map.isStyleLoaded() can apparently still read false on
+  // a later check even after the map has already loaded once — gating
+  // subsequent syncs on that live method caused updates after the first
+  // (empty) one to be silently skipped forever. This flag is ours, set by
+  // an event we know only fires once, so it can't flicker back to false.
+  const styleReadyRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -110,6 +117,7 @@ export function SampleMap({
     });
     map.addControl(new NavigationControl(), "top-left");
     map.on("load", () => {
+      styleReadyRef.current = true;
       map.resize();
       latestSyncRef.current();
     });
@@ -204,10 +212,10 @@ export function SampleMap({
     }
 
     latestSyncRef.current = syncLayers;
-    if (map.isStyleLoaded()) {
+    if (styleReadyRef.current) {
       syncLayers();
     }
-    // If the style isn't loaded yet, the "load" listener registered in the
+    // If the map hasn't loaded yet, the "load" listener registered in the
     // mount effect will call latestSyncRef.current() — which by then
     // points at this run's syncLayers — once it's ready.
   }, [samples, layers, visibleLayerIds, activeLayerId, onSyncError, onFeatureCounts]);
