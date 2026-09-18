@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { REQUIRED_FIELDS, optionalFieldByKey } from "@/lib/fields";
+import { DATE_FORMAT_LABEL } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,7 +101,8 @@ export function AddSampleDialog({
                 <Label htmlFor={field.key}>{field.label}</Label>
                 <Input
                   id={field.key}
-                  type={field.type === "date" ? "date" : "text"}
+                  type="text"
+                  placeholder={field.type === "date" ? DATE_FORMAT_LABEL : undefined}
                   value={values[field.key] ?? ""}
                   onChange={(e) => update(field.key, e.target.value)}
                 />

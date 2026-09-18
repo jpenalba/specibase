@@ -1,5 +1,7 @@
 import { getSupabase } from "./supabase";
+import { OPTIONAL_FIELDS } from "./fields";
 import { RawRow, validateRow } from "./validation";
+import { parseDDMMYYYY } from "./dates";
 
 const TABLE = "samples";
 
@@ -30,6 +32,20 @@ export async function existingIdentifiers(): Promise<Set<string>> {
   return new Set((data ?? []).map((row) => row.primary_identifier as string));
 }
 
+// Dates are entered/validated as DD-MM-YYYY but stored as ISO, since a
+// Postgres `date` column parses dash-separated strings ambiguously.
+function normalizeDatesForStorage(fields: RawRow): RawRow {
+  const normalized: RawRow = { ...fields };
+  for (const field of OPTIONAL_FIELDS) {
+    if (field.type !== "date") continue;
+    const raw = normalized[field.key];
+    if (!raw) continue;
+    const iso = parseDDMMYYYY(raw);
+    if (iso) normalized[field.key] = iso;
+  }
+  return normalized;
+}
+
 export type InsertResult =
   | { ok: true; sample: SampleRecord }
   | { ok: false; errors: string[] };
@@ -49,7 +65,7 @@ export async function insertSample(row: RawRow): Promise<InsertResult> {
       species: species.trim(),
       latitude: Number(latitude),
       longitude: Number(longitude),
-      ...rest,
+      ...normalizeDatesForStorage(rest),
     })
     .select()
     .single();
@@ -72,17 +88,37 @@ export async function insertSample(row: RawRow): Promise<InsertResult> {
 export type BulkImportResult = {
   inserted: SampleRecord[];
   skipped: { row: number; errors: string[] }[];
+  // Non-empty means no rows were inserted at all — a duplicate Sample ID
+  // (within the file, or against the database) blocks the whole upload
+  // rather than just being skipped like other row-level errors.
+  duplicateIds: string[];
 };
 
-// Inserts rows one at a time (rather than validating all up front then
-// writing once) so that a duplicate ID *within the same file* is caught
-// against rows already inserted earlier in this same import.
 export async function insertSamplesBulk(
   rows: RawRow[]
 ): Promise<BulkImportResult> {
+  const seen = await existingIdentifiers();
+  const duplicateIds = new Set<string>();
+
+  for (const row of rows) {
+    const id = row.primary_identifier?.trim();
+    if (!id) continue;
+    if (seen.has(id)) {
+      duplicateIds.add(id);
+    } else {
+      seen.add(id);
+    }
+  }
+
+  if (duplicateIds.size > 0) {
+    return { inserted: [], skipped: [], duplicateIds: [...duplicateIds] };
+  }
+
   const inserted: SampleRecord[] = [];
   const skipped: { row: number; errors: string[] }[] = [];
 
+  // Inserted one at a time (rather than a single bulk write) so each
+  // row is independently validated and a bad row doesn't sink the batch.
   for (const [index, row] of rows.entries()) {
     const result = await insertSample(row);
     if (result.ok) {
@@ -92,5 +128,5 @@ export async function insertSamplesBulk(
     }
   }
 
-  return { inserted, skipped };
+  return { inserted, skipped, duplicateIds: [] };
 }

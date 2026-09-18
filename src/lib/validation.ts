@@ -1,9 +1,14 @@
 import { OPTIONAL_FIELDS } from "./fields";
+import { parseDDMMYYYY, DATE_FORMAT_LABEL } from "./dates";
 
 export type RawRow = Record<string, string>;
 
 export type RowValidation = {
   errors: string[];
+  // Set only when the row's Sample ID collides with the database or with
+  // another row in the same upload — callers use this to hard-block an
+  // entire import rather than just skipping the one row.
+  duplicateId?: string;
 };
 
 function isBlank(value: string | undefined): boolean {
@@ -17,12 +22,14 @@ export function validateRow(
   existingIds: Set<string>
 ): RowValidation {
   const errors: string[] = [];
+  let duplicateId: string | undefined;
 
   const id = row.primary_identifier?.trim();
   if (isBlank(id)) {
     errors.push("Sample ID is required");
   } else if (existingIds.has(id)) {
     errors.push(`Sample ID "${id}" already exists`);
+    duplicateId = id;
   }
 
   if (isBlank(row.species)) {
@@ -39,7 +46,16 @@ export function validateRow(
     errors.push("Longitude must be a number between -180 and 180");
   }
 
-  return { errors };
+  for (const field of OPTIONAL_FIELDS) {
+    if (field.type !== "date") continue;
+    const raw = row[field.key];
+    if (isBlank(raw)) continue;
+    if (parseDDMMYYYY(raw) === null) {
+      errors.push(`${field.label} must be in ${DATE_FORMAT_LABEL} format`);
+    }
+  }
+
+  return { errors, duplicateId };
 }
 
 export function buildTemplateHeaders(selectedOptionalKeys: string[]): string[] {

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Papa from "papaparse";
 import { RawRow, validateRow } from "@/lib/validation";
+import { DATE_FORMAT_LABEL } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,6 +26,7 @@ import {
 type PreviewRow = {
   row: RawRow;
   errors: string[];
+  duplicateId?: string;
 };
 
 export function ImportDialog({
@@ -37,10 +39,11 @@ export function ImportDialog({
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{
     insertedCount: number;
     skipped: { row: number; errors: string[] }[];
+    duplicateIds: string[];
   } | null>(null);
 
   function reset() {
@@ -58,19 +61,19 @@ export function ImportDialog({
       complete: (results) => {
         const seenInFile = new Set(existingIdentifiers);
         const rows: PreviewRow[] = results.data.map((row) => {
-          const { errors } = validateRow(row, seenInFile);
+          const { errors, duplicateId } = validateRow(row, seenInFile);
           const id = row.primary_identifier?.trim();
           if (id && errors.length === 0) seenInFile.add(id);
-          return { row, errors };
+          return { row, errors, duplicateId };
         });
         setPreview(rows);
       },
     });
   }
 
-  async function handleImport() {
+  async function handleUpload() {
     if (!preview) return;
-    setImporting(true);
+    setUploading(true);
     try {
       const res = await fetch("/api/samples/import", {
         method: "POST",
@@ -81,13 +84,24 @@ export function ImportDialog({
       setResult({
         insertedCount: data.inserted?.length ?? 0,
         skipped: data.skipped ?? [],
+        duplicateIds: data.duplicateIds ?? [],
       });
-      onImported();
+      if ((data.duplicateIds?.length ?? 0) === 0) {
+        onImported();
+      }
     } finally {
-      setImporting(false);
+      setUploading(false);
     }
   }
 
+  const duplicateIds = [
+    ...new Set(
+      (preview ?? [])
+        .map((p) => p.duplicateId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  const hasDuplicates = duplicateIds.length > 0;
   const validCount = preview?.filter((p) => p.errors.length === 0).length ?? 0;
   const invalidCount = (preview?.length ?? 0) - validCount;
 
@@ -106,9 +120,10 @@ export function ImportDialog({
         <DialogHeader>
           <DialogTitle>Import samples from CSV</DialogTitle>
           <DialogDescription>
-            Upload a filled-in template. Rows are checked before anything is
-            saved — Sample ID, species, and valid latitude/longitude are
-            required for a row to import.
+            Nothing is saved until you click Upload below. Sample ID,
+            species, and valid latitude/longitude are required for a row to
+            upload, dates must be {DATE_FORMAT_LABEL}, and duplicate Sample
+            IDs block the whole upload rather than being skipped.
           </DialogDescription>
         </DialogHeader>
 
@@ -126,6 +141,16 @@ export function ImportDialog({
 
             {preview && (
               <>
+                {hasDuplicates && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                    <p className="font-medium">
+                      Duplicate Sample ID{duplicateIds.length === 1 ? "" : "s"}{" "}
+                      found — fix your file before uploading:
+                    </p>
+                    <p className="mt-1">{duplicateIds.join(", ")}</p>
+                  </div>
+                )}
+
                 <div className="text-sm">
                   <span className="font-medium">{fileName}</span> —{" "}
                   {validCount} row{validCount === 1 ? "" : "s"} ready,{" "}
@@ -171,10 +196,10 @@ export function ImportDialog({
 
             <DialogFooter>
               <Button
-                onClick={handleImport}
-                disabled={!preview || validCount === 0 || importing}
+                onClick={handleUpload}
+                disabled={!preview || validCount === 0 || hasDuplicates || uploading}
               >
-                {importing ? "Importing..." : `Import ${validCount} valid row(s)`}
+                {uploading ? "Uploading..." : `Upload ${validCount} valid row(s)`}
               </Button>
             </DialogFooter>
           </>
@@ -182,26 +207,41 @@ export function ImportDialog({
 
         {result && (
           <>
-            <div className="rounded-md border border-border p-3 text-sm">
-              <p>
-                Imported <span className="font-medium">{result.insertedCount}</span>{" "}
-                sample(s).
-              </p>
-              {result.skipped.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-destructive">
-                    Skipped {result.skipped.length} row(s):
-                  </p>
-                  <ul className="list-disc pl-4 text-muted-foreground">
-                    {result.skipped.map((s) => (
-                      <li key={s.row}>
-                        Row {s.row + 1}: {s.errors.join("; ")}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+            {result.duplicateIds.length > 0 ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                <p className="font-medium">
+                  Upload blocked — duplicate Sample ID(s) found:
+                </p>
+                <p className="mt-1">{result.duplicateIds.join(", ")}</p>
+                <p className="mt-2 text-muted-foreground">
+                  Nothing was saved. Someone may have added one of these IDs
+                  since you loaded this file — remove the duplicates and try
+                  again.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-border p-3 text-sm">
+                <p>
+                  Uploaded{" "}
+                  <span className="font-medium">{result.insertedCount}</span>{" "}
+                  sample(s).
+                </p>
+                {result.skipped.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-destructive">
+                      Skipped {result.skipped.length} row(s):
+                    </p>
+                    <ul className="list-disc pl-4 text-muted-foreground">
+                      {result.skipped.map((s) => (
+                        <li key={s.row}>
+                          Row {s.row + 1}: {s.errors.join("; ")}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             <DialogFooter>
               <Button onClick={() => setOpen(false)}>Done</Button>
             </DialogFooter>
