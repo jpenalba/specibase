@@ -1,37 +1,41 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import {
-  Map as MapLibreMap,
-  Popup,
-  NavigationControl,
-  LngLatBounds,
-  GeoJSONSource,
-  MapMouseEvent,
-} from "maplibre-gl";
+import { Map as MapLibreMap, Popup, NavigationControl, LngLatBounds, MapMouseEvent } from "maplibre-gl";
 import { SampleRecord } from "@/lib/samples-store";
 import { MapLayer } from "@/lib/layers";
+
+// A deliberately minimal shape for what this component builds — the full
+// maplibre-gl StyleSpecification type isn't re-exported from the package's
+// top-level entry point (only from its internal style-spec dependency),
+// and MapLibre validates the real shape at runtime regardless.
+type SimpleStyle = {
+  version: 8;
+  sources: Record<
+    string,
+    | { type: "raster"; tiles: string[]; tileSize: number; attribution: string }
+    | { type: "geojson"; data: GeoJSON.FeatureCollection<GeoJSON.Point> }
+  >;
+  layers: (
+    | { id: string; type: "raster"; source: string }
+    | { id: string; type: "circle"; source: string; paint: Record<string, unknown> }
+  )[];
+};
 
 // No API key required — OpenStreetMap's raster tiles work with zero setup,
 // which matters for a lab tool that should run the moment it's deployed.
 // Their usage policy isn't meant for heavy production traffic, though: if
 // this gets real day-to-day use, switch to a proper provider (MapTiler,
 // Stadia Maps, Mapbox) with its own key.
-const OSM_STYLE = {
-  version: 8 as const,
-  sources: {
-    osm: {
-      type: "raster" as const,
-      tiles: [
-        "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution: "&copy; OpenStreetMap contributors",
-    },
-  },
-  layers: [{ id: "osm", type: "raster" as const, source: "osm" }],
+const OSM_SOURCE = {
+  type: "raster" as const,
+  tiles: [
+    "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  ],
+  tileSize: 256,
+  attribution: "&copy; OpenStreetMap contributors",
 };
 
 function sourceId(layerId: string) {
@@ -70,6 +74,47 @@ function toFeatureCollection(
   return { type: "FeatureCollection", features };
 }
 
+// Builds the *entire* style from scratch every time, rather than issuing
+// incremental addLayer/removeLayer/setData calls against whatever state
+// the map happens to be in. MapLibre's setStyle diffs against the current
+// style internally (so this doesn't reload the unchanged raster tiles),
+// and a full rebuild can't drift out of sync with React state the way a
+// sequence of imperative mutations across renders can.
+function buildStyle(
+  layers: MapLayer[],
+  visibleLayerIds: Set<string>,
+  samples: SampleRecord[],
+  activeLayerId: string
+): { style: SimpleStyle; coords: [number, number][]; counts: Record<string, number> } {
+  const sources: SimpleStyle["sources"] = { osm: OSM_SOURCE };
+  const styleLayers: SimpleStyle["layers"] = [{ id: "osm", type: "raster", source: "osm" }];
+  const coords: [number, number][] = [];
+  const counts: Record<string, number> = {};
+
+  for (const layer of layers) {
+    if (!visibleLayerIds.has(layer.id)) continue;
+    const data = toFeatureCollection(samples, layer.sampleIds);
+    counts[layer.id] = data.features.length;
+    for (const f of data.features) coords.push(f.geometry.coordinates as [number, number]);
+
+    sources[sourceId(layer.id)] = { type: "geojson", data };
+    const isActive = layer.id === activeLayerId;
+    styleLayers.push({
+      id: circleLayerId(layer.id),
+      type: "circle",
+      source: sourceId(layer.id),
+      paint: {
+        "circle-color": layer.color,
+        "circle-radius": isActive ? 7 : 5,
+        "circle-stroke-width": isActive ? 2 : 1,
+        "circle-stroke-color": "#ffffff",
+      },
+    });
+  }
+
+  return { style: { version: 8, sources, layers: styleLayers }, coords, counts };
+}
+
 export function SampleMap({
   samples,
   layers,
@@ -91,37 +136,47 @@ export function SampleMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<Popup | null>(null);
-  // Always points at the *latest* sync function. The map's one-time "load"
-  // event is wired to call whatever this points to at the time it fires,
-  // rather than closing over whatever `samples`/`layers` existed at the
-  // moment the listener was registered — otherwise, if "load" fires after
-  // data has already arrived and re-rendered this component, the very
-  // first sync would run with a stale, empty `samples` array and nothing
-  // would tell it to run again with the real data.
-  const latestSyncRef = useRef<() => void>(() => {});
-  // Set once, permanently, the first time the map's "load" event fires.
-  // MapLibre's own map.isStyleLoaded() can apparently still read false on
-  // a later check even after the map has already loaded once — gating
-  // subsequent syncs on that live method caused updates after the first
-  // (empty) one to be silently skipped forever. This flag is ours, set by
-  // an event we know only fires once, so it can't flicker back to false.
-  const styleReadyRef = useRef(false);
   const lastCoordsRef = useRef<[number, number][]>([]);
+  const interactiveLayerIdsRef = useRef<string[]>([]);
+  // Always points at the latest apply function so the map's one-time
+  // "load" event (which can fire before or after the first real data
+  // arrives) calls whichever version is current at that moment, rather
+  // than a closure captured back when the listener was registered.
+  const latestApplyRef = useRef<() => void>(() => {});
+  const styleReadyRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: OSM_STYLE,
+      style: { version: 8, sources: { osm: OSM_SOURCE }, layers: [{ id: "osm", type: "raster", source: "osm" }] },
       center: [0, 0],
       zoom: 1,
     });
     map.addControl(new NavigationControl(), "top-left");
+
+    map.on("click", (e: MapMouseEvent) => {
+      if (interactiveLayerIdsRef.current.length === 0) return;
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: interactiveLayerIdsRef.current,
+      });
+      if (!features.length) return;
+      const props = features[0].properties as { primary_identifier: string; species: string };
+      popupRef.current?.remove();
+      popupRef.current = new Popup({ closeButton: true })
+        .setLngLat((features[0].geometry as GeoJSON.Point).coordinates as [number, number])
+        .setHTML(
+          `<div style="font-size:13px"><strong>${props.primary_identifier}</strong><br/>${props.species}</div>`
+        )
+        .addTo(map);
+    });
+
     map.on("load", () => {
       styleReadyRef.current = true;
       map.resize();
-      latestSyncRef.current();
+      latestApplyRef.current();
     });
+
     mapRef.current = map;
     return () => {
       map.remove();
@@ -133,98 +188,40 @@ export function SampleMap({
     const map = mapRef.current;
     if (!map) return;
 
-    function syncLayers() {
+    function applyStyle() {
       try {
-        const visibleLayers = layers.filter((l) => visibleLayerIds.has(l.id));
-        const wantedIds = new Set(visibleLayers.map((l) => l.id));
+        const { style, coords, counts } = buildStyle(layers, visibleLayerIds, samples, activeLayerId);
+        lastCoordsRef.current = coords;
+        interactiveLayerIdsRef.current = layers
+          .filter((l) => visibleLayerIds.has(l.id))
+          .map((l) => circleLayerId(l.id));
+        onFeatureCounts?.(counts);
 
-        // Remove sources/layers for anything no longer visible.
-        for (const layer of layers) {
-          if (wantedIds.has(layer.id)) continue;
-          if (map!.getLayer(circleLayerId(layer.id))) map!.removeLayer(circleLayerId(layer.id));
-          if (map!.getSource(sourceId(layer.id))) map!.removeSource(sourceId(layer.id));
-        }
-
-        const allCoords: [number, number][] = [];
-        const featureCounts: Record<string, number> = {};
-
-        for (const layer of visibleLayers) {
-          const data = toFeatureCollection(samples, layer.sampleIds);
-          featureCounts[layer.id] = data.features.length;
-          for (const f of data.features) allCoords.push(f.geometry.coordinates as [number, number]);
-
-          const existing = map!.getSource(sourceId(layer.id)) as GeoJSONSource | undefined;
-          if (existing) {
-            existing.setData(data);
-          } else {
-            map!.addSource(sourceId(layer.id), { type: "geojson", data });
+        map!.setStyle(style as Parameters<MapLibreMap["setStyle"]>[0]);
+        map!.once("styledata", () => {
+          map!.resize();
+          if (coords.length > 0) {
+            const bounds = coords.reduce(
+              (b, coord) => b.extend(coord),
+              new LngLatBounds(coords[0], coords[0])
+            );
+            map!.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
           }
-
-          const isActive = layer.id === activeLayerId;
-          if (!map!.getLayer(circleLayerId(layer.id))) {
-            map!.addLayer({
-              id: circleLayerId(layer.id),
-              type: "circle",
-              source: sourceId(layer.id),
-              paint: {
-                "circle-color": layer.color,
-                "circle-radius": isActive ? 7 : 5,
-                "circle-stroke-width": isActive ? 2 : 1,
-                "circle-stroke-color": "#ffffff",
-              },
-            });
-          } else {
-            map!.setPaintProperty(circleLayerId(layer.id), "circle-radius", isActive ? 7 : 5);
-            map!.setPaintProperty(circleLayerId(layer.id), "circle-stroke-width", isActive ? 2 : 1);
-          }
-        }
-
-        onFeatureCounts?.(featureCounts);
-        lastCoordsRef.current = allCoords;
-
-        // A flex/grid container's final size can settle after the map's
-        // canvas was first measured, leaving MapLibre's internal notion of
-        // its own dimensions stale — resize() re-reads the real size so
-        // fitBounds' math (and the visible canvas) both match reality.
-        map!.resize();
-        if (allCoords.length > 0) {
-          const bounds = allCoords.reduce(
-            (b, coord) => b.extend(coord),
-            new LngLatBounds(allCoords[0], allCoords[0])
-          );
-          map!.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
-        }
-
-        const interactiveLayerIds = visibleLayers.map((l) => circleLayerId(l.id));
-        map!.off("click", handleClick);
-        map!.on("click", handleClick);
-
-        function handleClick(e: MapMouseEvent) {
-          const features = map!.queryRenderedFeatures(e.point, { layers: interactiveLayerIds });
-          if (!features.length) return;
-          const props = features[0].properties as { primary_identifier: string; species: string };
-          popupRef.current?.remove();
-          popupRef.current = new Popup({ closeButton: true })
-            .setLngLat((features[0].geometry as GeoJSON.Point).coordinates as [number, number])
-            .setHTML(
-              `<div style="font-size:13px"><strong>${props.primary_identifier}</strong><br/>${props.species}</div>`
-            )
-            .addTo(map!);
-        }
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown map error";
-        console.error("Failed to sync map layers", error);
+        console.error("Failed to apply map style", error);
         onSyncError?.(message);
       }
     }
 
-    latestSyncRef.current = syncLayers;
+    latestApplyRef.current = applyStyle;
     if (styleReadyRef.current) {
-      syncLayers();
+      applyStyle();
     }
-    // If the map hasn't loaded yet, the "load" listener registered in the
-    // mount effect will call latestSyncRef.current() — which by then
-    // points at this run's syncLayers — once it's ready.
+    // If the map hasn't fired "load" yet, the mount effect's handler will
+    // call latestApplyRef.current() — which by then points at this run's
+    // applyStyle — once it's ready.
   }, [samples, layers, visibleLayerIds, activeLayerId, onSyncError, onFeatureCounts]);
 
   function fitToData() {
