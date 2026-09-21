@@ -50,8 +50,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Follows the OS preference unless the toggle in the nav bar has set an
+   explicit data-theme, which always wins over prefers-color-scheme. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0a0a0a;
     --foreground: #ededed;
     --card: #171717;
@@ -70,6 +72,26 @@
     --success: #14532d;
     --success-foreground: #86efac;
   }
+}
+
+:root[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #171717;
+  --card-foreground: #ededed;
+  --border: #2e2e2e;
+  --input: #2e2e2e;
+  --ring: #525252;
+  --primary: #ededed;
+  --primary-foreground: #171717;
+  --secondary: #262626;
+  --secondary-foreground: #ededed;
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+  --accent: #262626;
+  --accent-foreground: #ededed;
+  --success: #14532d;
+  --success-foreground: #86efac;
 }
 
 body {

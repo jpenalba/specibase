@@ -168,7 +168,6 @@ export default function DatabasePage() {
             samples={samples}
             layers={allLayers}
             visibleLayerIds={visibleLayerIds}
-            activeLayerId={activeLayerId}
             popupColumns={popupColumns}
             onSyncError={setMapSyncError}
             hiddenSampleIds={hiddenSampleIds}

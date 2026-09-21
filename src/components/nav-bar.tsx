@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "./theme-toggle";
 
 const LINKS = [
   { href: "/samples", label: "Add samples" },
@@ -30,6 +31,7 @@ export function NavBar() {
             {link.label}
           </Link>
         ))}
+        <ThemeToggle />
       </div>
     </nav>
   );

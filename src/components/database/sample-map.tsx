@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds } from "maplibre-gl";
 import { SampleRecord } from "@/lib/samples-store";
-import { MapLayer } from "@/lib/layers";
+import { MapLayer, ALL_LAYER_ID } from "@/lib/layers";
 import { LayerShape, shapePolygonPoints } from "@/lib/layer-shapes";
 import { FieldDef } from "@/lib/fields";
 import { formatToDDMMYYYY } from "@/lib/dates";
@@ -145,14 +145,15 @@ function computeVisiblePoints(
   samples: SampleRecord[],
   layers: MapLayer[],
   visibleLayerIds: Set<string>,
-  activeLayerId: string,
   hiddenSampleIds: Set<string>,
   highlightedSampleId: string | null
 ): PointInfo[] {
   const points: PointInfo[] = [];
   for (const layer of layers) {
     if (!visibleLayerIds.has(layer.id)) continue;
-    const isActive = layer.id === activeLayerId;
+    // Project layers draw larger than the main database, so a project's
+    // samples stand out against the full set of points beneath them.
+    const isMainDatabase = layer.id === ALL_LAYER_ID;
     for (const sample of samples) {
       if (!layer.sampleIds.has(sample.id)) continue;
       if (hiddenSampleIds.has(sample.id)) continue;
@@ -163,7 +164,7 @@ function computeVisiblePoints(
         point,
         color: layer.color,
         shape: layer.shape,
-        size: isActive ? 16 : 12,
+        size: isMainDatabase ? 12 : 16,
         isHighlighted: sample.id === highlightedSampleId,
       });
     }
@@ -255,7 +256,6 @@ export function SampleMap({
   samples,
   layers,
   visibleLayerIds,
-  activeLayerId,
   popupColumns,
   onSyncError,
   hiddenSampleIds,
@@ -264,7 +264,6 @@ export function SampleMap({
   samples: SampleRecord[];
   layers: MapLayer[];
   visibleLayerIds: Set<string>;
-  activeLayerId: string;
   // Fields shown when a point is clicked — pass the same columns visible
   // in the table so a marker's popup and the table row agree.
   popupColumns: FieldDef[];
@@ -391,7 +390,6 @@ export function SampleMap({
           samples,
           layers,
           visibleLayerIds,
-          activeLayerId,
           hiddenSampleIds,
           highlightedIdRef.current
         );
@@ -438,7 +436,7 @@ export function SampleMap({
     // basemap switch's "idle" — see the effects above), that handler will
     // call latestSyncMarkersRef.current() — which by then points at this
     // run's syncMarkers — once the style settles.
-  }, [samples, layers, visibleLayerIds, activeLayerId, hiddenSampleIds, popupColumns, onSyncError]);
+  }, [samples, layers, visibleLayerIds, hiddenSampleIds, popupColumns, onSyncError]);
 
   // Restyles just the previously/newly highlighted marker in place, and
   // pans/zooms to the new one — deliberately not folded into the effect
@@ -504,7 +502,6 @@ export function SampleMap({
         samples,
         layers,
         visibleLayerIds,
-        activeLayerId,
         hiddenSampleIds,
         highlightedIdRef.current
       );
