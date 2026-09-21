@@ -1,11 +1,13 @@
-import { Pencil } from "lucide-react";
+import Link from "next/link";
+import { Pencil, ListChecks } from "lucide-react";
 import { Project } from "@/lib/projects-store";
 import { parseCollaborators } from "@/lib/collaborators";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import { FocalGroupIcon } from "./focal-group-icon";
 import { ProjectStatusBadge } from "./project-status-badge";
 import { ProjectDialog } from "./project-dialog";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardFooter } from "@/components/ui/card";
 
 function Field({ label, value }: { label: string; value: string | null }) {
   if (!value) return null;
@@ -42,7 +44,6 @@ export function ProjectCard({
         </div>
         <ProjectDialog
           project={project}
-          linkedSampleIds={sampleIds}
           onSaved={onSaved}
           trigger={
             <button
@@ -80,10 +81,18 @@ export function ProjectCard({
             </div>
           )}
         </dl>
-        <p className="mt-3 text-xs text-muted-foreground">
+      </CardContent>
+      <CardFooter className="justify-between">
+        <p className="text-xs text-muted-foreground">
           {sampleIds.length} sample{sampleIds.length === 1 ? "" : "s"}
         </p>
-      </CardContent>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/projects/${project.id}/samples`}>
+            <ListChecks className="size-4" />
+            Sample list
+          </Link>
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

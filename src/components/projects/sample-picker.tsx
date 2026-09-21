@@ -15,9 +15,13 @@ type SampleOption = { id: string; primary_identifier: string; species: string };
 export function SamplePicker({
   selectedIds,
   onChange,
+  excludeIds,
 }: {
   selectedIds: Set<string>;
   onChange: (ids: Set<string>) => void;
+  // Samples to leave out of the list entirely — e.g. ones already linked
+  // to the project this picker is adding to.
+  excludeIds?: Set<string>;
 }) {
   const [samples, setSamples] = useState<SampleOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,15 +56,20 @@ export function SamplePicker({
     };
   }, []);
 
+  const selectable = useMemo(
+    () => (excludeIds ? samples.filter((s) => !excludeIds.has(s.id)) : samples),
+    [samples, excludeIds]
+  );
+
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return samples;
-    return samples.filter(
+    if (!q) return selectable;
+    return selectable.filter(
       (s) =>
         s.primary_identifier.toLowerCase().includes(q) ||
         s.species?.toLowerCase().includes(q)
     );
-  }, [samples, filter]);
+  }, [selectable, filter]);
 
   function toggle(id: string, checked: boolean) {
     const next = new Set(selectedIds);
@@ -75,7 +84,7 @@ export function SamplePicker({
       .map((t) => t.trim())
       .filter(Boolean);
     const byIdentifier = new Map(
-      samples.map((s) => [s.primary_identifier.toLowerCase(), s.id])
+      selectable.map((s) => [s.primary_identifier.toLowerCase(), s.id])
     );
     const next = new Set(selectedIds);
     const notFound: string[] = [];
