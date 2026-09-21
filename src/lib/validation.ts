@@ -15,6 +15,10 @@ function isBlank(value: string | undefined): boolean {
   return value === undefined || value.trim() === "";
 }
 
+// Keeps Sample IDs safe to use as-is in filenames, URLs, and CSV exports —
+// no spaces or punctuation that would need escaping anywhere downstream.
+const SAMPLE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
 // Shared by both the client-side staging preview and the server-side
 // commit, so "what counts as a valid row" is defined in exactly one place.
 export function validateRow(
@@ -27,6 +31,10 @@ export function validateRow(
   const id = row.primary_identifier?.trim();
   if (isBlank(id)) {
     errors.push("Sample ID is required");
+  } else if (!SAMPLE_ID_PATTERN.test(id)) {
+    errors.push(
+      "Sample ID can only contain letters, numbers, hyphens (-), and underscores (_) — no spaces or other characters"
+    );
   } else if (existingIds.has(id)) {
     errors.push(`Sample ID "${id}" already exists`);
     duplicateId = id;

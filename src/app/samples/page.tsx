@@ -86,7 +86,6 @@ export default function SamplesPage() {
         body: JSON.stringify({
           rows: staged.map((s) => s.row),
           projectId: projectSelection.mode === "existing" ? projectSelection.projectId : undefined,
-          newProjectName: projectSelection.mode === "new" ? projectSelection.name : undefined,
         }),
       });
       const data = await res.json();
@@ -121,10 +120,7 @@ export default function SamplesPage() {
     }
   }
 
-  const canUpload =
-    staged.length > 0 &&
-    !uploading &&
-    (projectSelection.mode !== "new" || projectSelection.name.trim().length > 0);
+  const canUpload = staged.length > 0 && !uploading;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 sm:p-10">

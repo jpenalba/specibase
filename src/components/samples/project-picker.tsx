@@ -1,15 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Input } from "@/components/ui/input";
+import { useCallback, useEffect, useState } from "react";
+import { Project } from "@/lib/projects-store";
+import { ProjectDialog } from "@/components/projects/project-dialog";
 import { Label } from "@/components/ui/label";
 
-type Project = { id: string; name: string };
-
-export type ProjectSelection =
-  | { mode: "none" }
-  | { mode: "existing"; projectId: string }
-  | { mode: "new"; name: string };
+export type ProjectSelection = { mode: "none" } | { mode: "existing"; projectId: string };
 
 export function ProjectPicker({
   selection,
@@ -19,22 +15,31 @@ export function ProjectPicker({
   onChange: (selection: ProjectSelection) => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [loadError, setLoadError] = useState(false);
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(() => {
     fetch("/api/projects")
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled) setProjects(data.projects ?? []);
+        if (data.errors?.length > 0) {
+          setLoadError(true);
+          return;
+        }
+        setLoadError(false);
+        setProjects(data.projects ?? []);
       })
-      .catch(() => {
-        // Projects are a nice-to-have here — an empty list just means
-        // "existing project" isn't offered yet, not a hard failure.
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => setLoadError(true));
   }, []);
+
+  useEffect(() => {
+    load();
+    // A project created on the Projects page (or in another tab) after
+    // this page was first opened wouldn't otherwise show up here without
+    // a hard reload — refetch whenever this tab regains focus.
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [load]);
 
   return (
     <div className="grid gap-2">
@@ -42,11 +47,11 @@ export function ProjectPicker({
       <select
         id="project-select"
         className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        value={selection.mode === "existing" ? selection.projectId : selection.mode}
+        value={selection.mode === "existing" ? selection.projectId : "none"}
         onChange={(e) => {
           const value = e.target.value;
           if (value === "none") onChange({ mode: "none" });
-          else if (value === "new") onChange({ mode: "new", name: "" });
+          else if (value === "new") setNewDialogOpen(true);
           else onChange({ mode: "existing", projectId: value });
         }}
       >
@@ -58,13 +63,20 @@ export function ProjectPicker({
         ))}
         <option value="new">+ New project...</option>
       </select>
-      {selection.mode === "new" && (
-        <Input
-          placeholder="New project name"
-          value={selection.name}
-          onChange={(e) => onChange({ mode: "new", name: e.target.value })}
-        />
+      {loadError && (
+        <p className="text-xs text-destructive">
+          Couldn&apos;t load existing projects — you can still create a new one.
+        </p>
       )}
+      <ProjectDialog
+        open={newDialogOpen}
+        onOpenChange={setNewDialogOpen}
+        onSaved={() => {}}
+        onCreated={(project) => {
+          setProjects((prev) => [...prev, project].sort((a, b) => a.name.localeCompare(b.name)));
+          onChange({ mode: "existing", projectId: project.id });
+        }}
+      />
     </div>
   );
 }

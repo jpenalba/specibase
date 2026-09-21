@@ -65,17 +65,31 @@ function formFromProject(project: Project): FormState {
 // editing an existing one (PATCHes) — one form, since the fields are
 // identical either way and duplicating it would just be a maintenance
 // hazard the next time a field's added.
+//
+// Usually opened by clicking `trigger`, but `open`/`onOpenChange` can be
+// passed instead to drive it from elsewhere (e.g. the sample upload
+// page's project picker opens it without rendering a trigger of its own).
 export function ProjectDialog({
   project,
   onSaved,
+  onCreated,
   trigger,
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
 }: {
   project?: Project;
   onSaved: () => void;
-  trigger: React.ReactNode;
+  // Fires only on a successful create (not edit), with the new project —
+  // lets a caller like the project picker select it immediately instead
+  // of waiting on a refetch.
+  onCreated?: (project: Project) => void;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const isEdit = Boolean(project);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
   const [values, setValues] = useState<FormState>(() =>
     project ? formFromProject(project) : emptyForm()
   );
@@ -84,6 +98,11 @@ export function ProjectDialog({
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setOpen(next: boolean) {
+    if (onOpenChangeProp) onOpenChangeProp(next);
+    else setInternalOpen(next);
   }
 
   function handleOpenChange(next: boolean) {
@@ -139,6 +158,7 @@ export function ProjectDialog({
       }
       setOpen(false);
       onSaved();
+      if (!isEdit) onCreated?.(data.project);
     } catch {
       setErrors(["Couldn't reach the server."]);
     } finally {
@@ -150,7 +170,7 @@ export function ProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit project" : "Add project"}</DialogTitle>
