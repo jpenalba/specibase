@@ -36,17 +36,31 @@ const geojson = JSON.parse(
   readFileSync(path.join(__dirname, "data/countries-110m.geojson"), "utf-8")
 );
 
+// A MapLibre "image" source does NOT reproject its pixels per-latitude —
+// it converts the four given corners to Mercator space and stretches the
+// image linearly between them as a flat quad (see maplibre-gl's
+// ImageSource.setCoordinates(), which maps each corner through
+// MercatorCoordinate.fromLngLat and never touches the pixels in between).
+// So the image itself has to already be Mercator-projected for its content
+// to land on the same lat/lng as everything else on the map (the sample
+// markers included) — a plain linear/equirectangular image would end up
+// vertically compressed relative to true Mercator, which is exactly the
+// "points don't land in the right place" bug this replaced. Web Mercator is
+// undefined at the poles (Y → ±∞), so both the image and the source's
+// corner coordinates are clamped to the standard ±85.0511° limit — the same
+// latitude every other Mercator web map (and Streets/Satellite here) is cut
+// off at, which is also exactly where the Mercator Y range becomes square
+// with the longitude range, hence the square canvas below.
+const LAT_LIMIT = 85.0511287798;
 const WIDTH = 4096;
-const HEIGHT = 2048;
+const HEIGHT = 4096;
+const mercatorY = (latDeg) => Math.log(Math.tan(Math.PI / 4 + (latDeg * Math.PI) / 360));
+const MERCATOR_Y_LIMIT = mercatorY(LAT_LIMIT);
 
-// Plain equirectangular (plate carrée) projection: linear in longitude and
-// latitude. Deliberately not Mercator — this image is placed on the map as
-// a MapLibre "image" source spanning the four corners of the world, and
-// MapLibre itself reprojects it into Mercator space for display, the same
-// way it reprojects any raster tile.
 function project([lng, lat]) {
+  const clampedLat = Math.max(-LAT_LIMIT, Math.min(LAT_LIMIT, lat));
   const x = ((lng + 180) / 360) * WIDTH;
-  const y = ((90 - lat) / 180) * HEIGHT;
+  const y = ((MERCATOR_Y_LIMIT - mercatorY(clampedLat)) / (2 * MERCATOR_Y_LIMIT)) * HEIGHT;
   return [x, y];
 }
 
