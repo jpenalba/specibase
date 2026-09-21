@@ -1,26 +1,43 @@
 // One-off build step: rasterizes the Natural Earth country boundaries
-// (scripts/data/countries-110m.geojson, produced by
-// build-countries-geojson.mjs) into a standard XYZ raster tile pyramid for
-// the "Plain" basemap, the same shape of source Streets/Satellite already
-// use (public/plain-tiles/{z}/{x}/{y}.png), rather than one static image.
+// (scripts/data/countries-10m.geojson, produced by build-countries-geojson.mjs)
+// into a standard XYZ raster tile pyramid for the "Plain" basemap — the
+// same shape of source Streets/Satellite already use — rather than a live
+// GeoJSON style (fill/line layers over a vector source): MapLibre's GeoJSON
+// pipeline (parsing/tiling on a worker thread) hangs indefinitely in this
+// app's Turbopack-bundled build (confirmed with Playwright, in both `next
+// dev` and a production build, even with inline data and no network fetch
+// involved) while the identical style renders fine outside of Next/
+// Turbopack. Raster tiles sidestep that pipeline entirely.
 //
-// A single image (an earlier version of this basemap) necessarily has a
-// fixed pixel resolution, so it visibly pixelates once the map is zoomed in
-// past whatever that resolution was rendered at — real tiles avoid this the
-// same way Streets/Satellite do, by having actual higher-resolution images
-// available at deeper zoom levels instead of stretching one fixed image.
+// Two stacked raster sources, not one uniform pyramid:
+//   - "world-base" (z0..BASE_MAX_ZOOM): full coverage, every tile rendered.
+//     Cheap because at this shallow a zoom there just aren't many tiles.
+//   - "world-detail" (BASE_MAX_ZOOM+1..DETAIL_MAX_ZOOM): only tiles that
+//     actually have a piece of coastline/border running through them.
+//     Everywhere else — the interior of a large landmass, the open ocean —
+//     is skipped (no file) and left transparent, so world-base's z6 tile
+//     (oversampled, but still just as solid a color, since oversampling a
+//     solid fill has no visible artifact) shows through underneath. This
+//     is what makes going several zoom levels deeper than the base layer
+//     tractable: tile count scales with coastline *length*, not land
+//     *area*, instead of with 4^zoom like a naive uniform pyramid would.
 //
-// This still isn't a live GeoJSON style (fill/line layers over a vector
-// source): MapLibre's GeoJSON pipeline (parsing/tiling on a worker thread)
-// hangs indefinitely in this app's Turbopack-bundled build (confirmed with
-// Playwright, in both `next dev` and a production build, even with inline
-// data and no network fetch involved) while the identical style renders
-// fine outside of Next/Turbopack. Raster tiles sidestep that pipeline
-// entirely — plain image fetches on the main thread, no worker involved.
+// Rendering itself also only feeds each tile the handful of country rings
+// whose bounding box is anywhere near it, rather than one SVG path for
+// every country on Earth cropped via viewBox — with 10m-resolution data
+// (255 countries, ~540k coordinate points total, versus the 110m version's
+// ~30k) re-rasterizing the *entire* combined path for every one of tens of
+// thousands of tiles is the difference between this script finishing in
+// minutes versus not finishing in hours. A tile next to a
+// huge country's coastline (e.g. Russia) still pulls in that whole ring,
+// since a ring can't be cut into pieces without breaking the fill (SVG
+// fills a shape using its complete path, not just whatever's visible), but
+// even that worst case renders in well under 100ms.
 //
 // Re-run this manually (`node scripts/build-countries-geojson.mjs && node
-// scripts/build-plain-basemap-tiles.mjs`) if the source data or MAX_ZOOM
-// ever changes. Deletes and regenerates public/plain-tiles/ from scratch.
+// scripts/build-plain-basemap-tiles.mjs`) if the source data or any of the
+// zoom constants below ever change. Deletes and regenerates
+// public/plain-tiles/ from scratch.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, mkdtempSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -37,23 +54,19 @@ const launchOptions = existsSync(SANDBOX_CHROMIUM) ? { executablePath: SANDBOX_C
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const geojson = JSON.parse(
-  readFileSync(path.join(__dirname, "data/countries-110m.geojson"), "utf-8")
+  readFileSync(path.join(__dirname, "data/countries-10m.geojson"), "utf-8")
 );
 
-// Deeper than this, the underlying 110m-simplified coastlines have no more
-// real detail to show anyway (MapLibre just oversamples the z6 tile past
-// this, the same graceful degradation Satellite gets past its own source's
-// max zoom) — going deeper mainly multiplies tile count, not visible
-// quality, for what's meant to stay a plain background layer.
-const MAX_ZOOM = 6;
+const BASE_MAX_ZOOM = 6;
+const DETAIL_MAX_ZOOM = 9;
 const TILE_SIZE = 256;
 // A MapLibre "raster" source's tiles are placed by standard Web Mercator
 // tile math — square, so the whole tile pyramid's pixel space (a single
-// z0 tile scaled up by 2^MAX_ZOOM) is square too. Web Mercator is undefined
-// at the poles (Y → ±∞), so latitude is clamped to the standard ±85.0511°
-// limit — the same one Streets/Satellite are cut off at.
+// z0 tile scaled up by 2^DETAIL_MAX_ZOOM) is square too. Web Mercator is
+// undefined at the poles (Y → ±∞), so latitude is clamped to the standard
+// ±85.0511° limit — the same one Streets/Satellite are cut off at.
 const LAT_LIMIT = 85.0511287798;
-const WORLD_SIZE = TILE_SIZE * 2 ** MAX_ZOOM;
+const WORLD_SIZE = TILE_SIZE * 2 ** DETAIL_MAX_ZOOM;
 const mercatorY = (latDeg) => Math.log(Math.tan(Math.PI / 4 + (latDeg * Math.PI) / 360));
 const MERCATOR_Y_LIMIT = mercatorY(LAT_LIMIT);
 
@@ -105,7 +118,7 @@ function ringToSegments(ring) {
   return segments.filter((s) => s.length > 1);
 }
 
-function segmentBBox(points) {
+function bboxOf(points) {
   let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
   for (const [lng, lat] of points) {
     if (lng < minLng) minLng = lng;
@@ -116,11 +129,6 @@ function segmentBBox(points) {
   return { minLng, maxLng, minLat, maxLat };
 }
 
-// One entry per antimeridian-split ring segment: the raw lng/lat points
-// (for the land-overlap bbox test below) and the already-projected pixel
-// path data (for drawing, at the single fixed WORLD_SIZE resolution — every
-// zoom level's tiles are just a crop of the same vector paths, so this is
-// computed once and reused for all of them).
 const segments = [];
 for (const feature of geojson.features) {
   const geometry = feature.geometry;
@@ -128,36 +136,126 @@ for (const feature of geojson.features) {
     geometry.type === "Polygon" ? [geometry.coordinates] : geometry.type === "MultiPolygon" ? geometry.coordinates : [];
   for (const polygon of polygons) {
     for (const ring of polygon) {
-      for (const points of ringToSegments(ring)) {
-        segments.push({ bbox: segmentBBox(points), points });
-      }
+      for (const points of ringToSegments(ring)) segments.push(points);
     }
   }
 }
 
-const pathData = segments
-  .map(({ points }) => {
-    const projected = points.map(project);
-    return `M ${projected.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L ")} Z`;
-  })
-  .join(" ");
+// Each segment's own bounding box (loose — spans a country's full extent,
+// interior included) and pre-projected path fragment, computed once and
+// reused for every tile that needs it.
+const segmentBBoxes = segments.map(bboxOf);
+const segmentFragments = segments.map((points) => {
+  const projected = points.map(project);
+  return `M ${projected.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L ")} Z`;
+});
+
+// Spatial index (2°x2° cells) so "which segments are anywhere near this
+// tile" is a lookup against a handful of cells instead of a scan of every
+// segment for every tile — without it, both this check and the tighter
+// outline-chunk check below are far too slow across tens of thousands of
+// tiles.
+const GRID_CELL_DEGREES = 2;
+function cellKeysFor(bbox) {
+  const cx0 = Math.floor(bbox.minLng / GRID_CELL_DEGREES);
+  const cx1 = Math.floor(bbox.maxLng / GRID_CELL_DEGREES);
+  const cy0 = Math.floor(bbox.minLat / GRID_CELL_DEGREES);
+  const cy1 = Math.floor(bbox.maxLat / GRID_CELL_DEGREES);
+  const keys = [];
+  for (let cx = cx0; cx <= cx1; cx++) {
+    for (let cy = cy0; cy <= cy1; cy++) keys.push(`${cx},${cy}`);
+  }
+  return keys;
+}
+
+const segmentGrid = new Map();
+segmentBBoxes.forEach((bbox, i) => {
+  for (const key of cellKeysFor(bbox)) {
+    if (!segmentGrid.has(key)) segmentGrid.set(key, []);
+    segmentGrid.get(key).push(i);
+  }
+});
 
 function tileLngLatBounds(z, x, y) {
   const n = 2 ** z;
   const lonLeft = (x / n) * 360 - 180;
   const lonRight = ((x + 1) / n) * 360 - 180;
   const toLat = (fy) => (180 / Math.PI) * Math.atan(Math.sinh(Math.PI * (1 - (2 * fy) / n)));
-  return { lonLeft, lonRight, latTop: toLat(y), latBottom: toLat(y + 1) };
+  return { minLng: lonLeft, maxLng: lonRight, latTop: toLat(y), latBottom: toLat(y + 1) };
 }
 
-function overlapsLand(tileBounds) {
-  return segments.some(
-    ({ bbox }) =>
-      bbox.minLng <= tileBounds.lonRight &&
-      bbox.maxLng >= tileBounds.lonLeft &&
-      bbox.minLat <= tileBounds.latTop &&
-      bbox.maxLat >= tileBounds.latBottom
-  );
+// Segments whose bounding box overlaps this tile at all — used both to
+// decide whether the base layer needs a tile here (any land, interior
+// included) and to pick which rings to actually feed the SVG for drawing.
+function segmentsNear(tileBounds) {
+  const found = new Set();
+  for (const key of cellKeysFor({
+    minLng: tileBounds.minLng,
+    maxLng: tileBounds.maxLng,
+    minLat: tileBounds.latBottom,
+    maxLat: tileBounds.latTop,
+  })) {
+    const candidates = segmentGrid.get(key);
+    if (!candidates) continue;
+    for (const i of candidates) {
+      const bbox = segmentBBoxes[i];
+      if (
+        bbox.minLng <= tileBounds.maxLng &&
+        bbox.maxLng >= tileBounds.minLng &&
+        bbox.minLat <= tileBounds.latTop &&
+        bbox.maxLat >= tileBounds.latBottom
+      ) {
+        found.add(i);
+      }
+    }
+  }
+  return found;
+}
+
+// A whole ring segment's bounding box is a poor proxy for "is the actual
+// outline near this tile" — a long, winding segment's bbox can span a huge
+// area that's mostly nowhere near the line itself (this is fine for
+// segmentsNear() above, which only needs to find candidates to draw, but
+// it would flag nearly every tile within a large country's bbox as
+// "bordering" and defeat the whole point of the detail layer, which
+// should skip a large country's deep interior). Chopping into short
+// chunks first keeps each bbox tight to the piece of coastline it
+// actually covers, for this check specifically.
+const CHUNK_POINTS = 12;
+const outlineChunkGrid = new Map();
+for (const points of segments) {
+  for (let i = 0; i < points.length; i += CHUNK_POINTS - 1) {
+    const chunk = points.slice(i, i + CHUNK_POINTS);
+    if (chunk.length < 2) continue;
+    const bbox = bboxOf(chunk);
+    for (const key of cellKeysFor(bbox)) {
+      if (!outlineChunkGrid.has(key)) outlineChunkGrid.set(key, []);
+      outlineChunkGrid.get(key).push(bbox);
+    }
+  }
+}
+
+function nearOutline(tileBounds) {
+  for (const key of cellKeysFor({
+    minLng: tileBounds.minLng,
+    maxLng: tileBounds.maxLng,
+    minLat: tileBounds.latBottom,
+    maxLat: tileBounds.latTop,
+  })) {
+    const candidates = outlineChunkGrid.get(key);
+    if (!candidates) continue;
+    for (const bbox of candidates) {
+      if (
+        bbox.minLng <= tileBounds.maxLng &&
+        bbox.maxLng >= tileBounds.minLng &&
+        bbox.minLat <= tileBounds.latTop &&
+        bbox.maxLat >= tileBounds.latBottom
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 const outDir = path.join(__dirname, "../public/plain-tiles");
@@ -171,7 +269,7 @@ writeFileSync(
   `<!doctype html><html><body style="margin:0;padding:0;">
 <svg xmlns="http://www.w3.org/2000/svg" id="svg" width="${TILE_SIZE}" height="${TILE_SIZE}">
   <g id="fill" fill="#c9c9c2" stroke="#ffffff" stroke-linejoin="round">
-    <path d="${pathData}" />
+    <path id="path" d="" />
   </g>
 </svg>
 </body></html>`
@@ -179,18 +277,19 @@ writeFileSync(
 
 const browser = await chromium.launch(launchOptions);
 let tileCount = 0;
+const startTime = Date.now();
 try {
   const page = await browser.newPage({ viewport: { width: TILE_SIZE, height: TILE_SIZE } });
   await page.goto(`file://${htmlPath}`);
 
-  for (let z = 0; z <= MAX_ZOOM; z++) {
+  for (let z = 0; z <= DETAIL_MAX_ZOOM; z++) {
+    const isBaseLevel = z <= BASE_MAX_ZOOM;
     const tileWorldSize = WORLD_SIZE / 2 ** z;
     // A stroke of a fixed width in these path coordinates would render at a
     // different *physical* thickness at every zoom level, since each level
     // crops a differently-sized chunk of the same WORLD_SIZE coordinate
     // space into the same TILE_SIZE pixels — scale it so borders stay a
-    // consistent ~1.4px on screen everywhere, matching how the previous
-    // single-image version looked at its native resolution.
+    // consistent ~1.4px on screen everywhere.
     const strokeWidth = 1.4 * (tileWorldSize / TILE_SIZE);
     await page.evaluate(
       ({ sw }) => document.getElementById("fill").setAttribute("stroke-width", String(sw)),
@@ -199,29 +298,44 @@ try {
 
     const zDir = path.join(outDir, String(z));
     const n = 2 ** z;
+    let zTileCount = 0;
     for (let x = 0; x < n; x++) {
       for (let y = 0; y < n; y++) {
-        // Below z4 the tile count is tiny (≤64) regardless — skip the
-        // overlap check there and just render everything, since checking
-        // costs more than it'd ever save at that size.
-        if (z >= 4 && !overlapsLand(tileLngLatBounds(z, x, y))) continue;
+        const bounds = tileLngLatBounds(z, x, y);
+        // Base layer: full coverage of every tile with any land in it
+        // (interior included) — below z4 the count is tiny regardless, so
+        // skip the check there and just render everything. Detail layer:
+        // only tiles with actual coastline/border running through them —
+        // see the module comment for why everywhere else (ocean, or deep
+        // interior already covered by the base layer) is safe to skip.
+        if (!isBaseLevel && !nearOutline(bounds)) continue;
+
+        const nearby = segmentsNear(bounds);
+        if (isBaseLevel && z >= 4 && nearby.size === 0) continue;
+        const d = [...nearby].map((i) => segmentFragments[i]).join(" ");
 
         await page.evaluate(
-          ({ left, top, size }) =>
-            document.getElementById("svg").setAttribute("viewBox", `${left} ${top} ${size} ${size}`),
-          { left: x * tileWorldSize, top: y * tileWorldSize, size: tileWorldSize }
+          ({ left, top, size, d }) => {
+            document.getElementById("path").setAttribute("d", d);
+            document.getElementById("svg").setAttribute("viewBox", `${left} ${top} ${size} ${size}`);
+          },
+          { left: x * tileWorldSize, top: y * tileWorldSize, size: tileWorldSize, d }
         );
 
         mkdirSync(path.join(zDir, String(x)), { recursive: true });
         await page.screenshot({ path: path.join(zDir, String(x), `${y}.png`) });
         tileCount++;
+        zTileCount++;
       }
     }
-    console.log(`z${z}: done (${tileCount} tiles so far)`);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+    console.log(`z${z}: ${zTileCount} tiles (${tileCount} total so far, ${elapsed}s elapsed)`);
   }
 } finally {
   await browser.close();
   rmSync(scratchDir, { recursive: true, force: true });
 }
 
-console.log(`Wrote ${tileCount} tiles to ${outDir} (maxzoom ${MAX_ZOOM}) from ${geojson.features.length} country features`);
+console.log(
+  `Wrote ${tileCount} tiles to ${outDir} (base 0-${BASE_MAX_ZOOM}, detail ${BASE_MAX_ZOOM + 1}-${DETAIL_MAX_ZOOM}) from ${geojson.features.length} country features`
+);

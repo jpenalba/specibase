@@ -62,9 +62,10 @@ const BASEMAPS: Record<
   plain: {
     label: "Plain",
     // A pre-rendered raster tile pyramid (gray countries, white borders,
-    // white ocean — see scripts/build-plain-basemap-tiles.mjs), the same
-    // shape of source as Streets/Satellite, rather than a single static
-    // image or a live GeoJSON source styled with fill/line layers:
+    // white ocean, from 10m-resolution Natural Earth boundaries — see
+    // scripts/build-plain-basemap-tiles.mjs), the same shape of source as
+    // Streets/Satellite, rather than a single static image or a live
+    // GeoJSON source styled with fill/line layers:
     // - A single image pixelates once zoomed in past its fixed resolution;
     //   real tiles avoid that by having sharper images at deeper zooms,
     //   same as any other raster basemap.
@@ -78,28 +79,40 @@ const BASEMAPS: Record<
     //   tiles sidestep that pipeline entirely (plain image fetches, no
     //   worker), which is also why Streets and Satellite were never
     //   affected by this bug.
+    //
+    // Two stacked raster sources rather than one uniform pyramid — see the
+    // build script's module comment for the full reasoning: "world-base"
+    // covers the whole world up to zoom 6, and "world-detail" only exists
+    // where real coastline/border runs through a tile, letting it go much
+    // deeper (zoom 9) without a 4^zoom explosion of ocean/interior tiles.
+    // world-base's z6 tile just oversamples underneath wherever world-detail
+    // has no tile, which is invisible for a solid fill.
     attribution: "Natural Earth",
     style: {
       version: 8,
       sources: {
-        world: {
+        "world-base": {
           type: "raster",
           tiles: ["/plain-tiles/{z}/{x}/{y}.png"],
           tileSize: 256,
-          // Matches MAX_ZOOM in build-plain-basemap-tiles.mjs — past this,
-          // MapLibre oversamples the deepest tile it has, the same graceful
-          // degradation Satellite gets past its own source's max zoom. The
-          // underlying 110m-simplified coastlines have no more real detail
-          // to show past this zoom anyway.
           maxzoom: 6,
+        },
+        "world-detail": {
+          type: "raster",
+          tiles: ["/plain-tiles/{z}/{x}/{y}.png"],
+          tileSize: 256,
+          minzoom: 7,
+          maxzoom: 9,
         },
       },
       layers: [
-        // Tiles that don't exist (pure ocean, skipped at build time to
-        // avoid generating and shipping thousands of blank files) 404 and
-        // render nothing, so this shows through as the ocean color.
+        // Tiles that don't exist (pure ocean/deep interior, skipped at
+        // build time to avoid generating and shipping every possible tile)
+        // 404 and render nothing, so the layer(s) beneath show through —
+        // down to this background color for open ocean.
         { id: "water", type: "background", paint: { "background-color": "#ffffff" } },
-        { id: "world", type: "raster", source: "world" },
+        { id: "world-base", type: "raster", source: "world-base" },
+        { id: "world-detail", type: "raster", source: "world-detail" },
       ],
     },
   },
