@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
-import { AddProjectDialog } from "@/components/projects/add-project-dialog";
+import { ProjectDialog } from "@/components/projects/project-dialog";
 import { ProjectCard } from "@/components/projects/project-card";
+import { Button } from "@/components/ui/button";
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -44,7 +45,7 @@ export default function ProjectsPage() {
             focused on, and how many samples are linked to it.
           </p>
         </div>
-        <AddProjectDialog onCreated={load} />
+        <ProjectDialog onSaved={load} trigger={<Button>Add project</Button>} />
       </div>
 
       {error && (
@@ -68,12 +69,12 @@ export default function ProjectsPage() {
           {projects.map((project) => {
             const sampleCount = links.filter((l) => l.project_id === project.id).length;
             return (
-              <div key={project.id}>
-                <ProjectCard project={project} />
-                <p className="mt-1 px-1 text-xs text-muted-foreground">
-                  {sampleCount} sample{sampleCount === 1 ? "" : "s"}
-                </p>
-              </div>
+              <ProjectCard
+                key={project.id}
+                project={project}
+                sampleCount={sampleCount}
+                onSaved={load}
+              />
             );
           })}
         </div>

@@ -6,6 +6,7 @@ import {
   listSampleProjectLinks,
 } from "@/lib/projects-store";
 import { apiError } from "@/lib/api-error";
+import { parseProjectFields } from "./parse-body";
 
 export async function GET() {
   try {
@@ -17,10 +18,6 @@ export async function GET() {
   } catch (error) {
     return apiError(error);
   }
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 export async function POST(request: NextRequest) {
@@ -38,17 +35,16 @@ export async function POST(request: NextRequest) {
     // a taken name there should fail loudly rather than silently handing
     // back a different project and dropping every field just typed in.
     const hasDetails = Object.keys(body).some((key) => key !== "name");
-    const project = hasDetails
-      ? await createProject({
-          name,
-          description: optionalString(body.description),
-          start_date: optionalString(body.start_date),
-          owner: optionalString(body.owner),
-          collaborators: optionalString(body.collaborators),
-          focal_group: optionalString(body.focal_group),
-          focal_region: optionalString(body.focal_region),
-        })
-      : await getOrCreateProject(name);
+    if (!hasDetails) {
+      const project = await getOrCreateProject(name);
+      return NextResponse.json({ project }, { status: 201 });
+    }
+
+    const fields = parseProjectFields(body);
+    if ("error" in fields) {
+      return NextResponse.json({ errors: [fields.error] }, { status: 400 });
+    }
+    const project = await createProject({ name, ...fields });
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
     return apiError(error);

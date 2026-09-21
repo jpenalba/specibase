@@ -1,7 +1,10 @@
 import { getSupabase } from "./supabase";
+import { FocalGroupCategory } from "./focal-group";
 
 const PROJECTS_TABLE = "projects";
 const LINK_TABLE = "sample_projects";
+
+export type ProjectStatus = "in_progress" | "completed";
 
 export type Project = {
   id: string;
@@ -14,7 +17,11 @@ export type Project = {
   // @/lib/collaborators for turning this into a list for display.
   collaborators: string | null;
   focal_group: string | null;
+  // An explicit icon choice — overrides auto-matching focal_group's text
+  // (see @/lib/focal-group) when set. Null means keep auto-matching.
+  logo: FocalGroupCategory | null;
   focal_region: string | null;
+  status: ProjectStatus;
 };
 
 export type NewProjectInput = {
@@ -25,7 +32,11 @@ export type NewProjectInput = {
   collaborators?: string;
   focal_group?: string;
   focal_region?: string;
+  logo?: FocalGroupCategory | null;
+  status?: ProjectStatus;
 };
+
+export type UpdateProjectInput = Partial<NewProjectInput>;
 
 // Postgres's unique_violation code — used to turn a duplicate project name
 // into a message worth showing someone, instead of a raw constraint error.
@@ -48,12 +59,44 @@ export async function createProject(input: NewProjectInput): Promise<Project> {
       collaborators: input.collaborators?.trim() || null,
       focal_group: input.focal_group?.trim() || null,
       focal_region: input.focal_region?.trim() || null,
+      logo: input.logo || null,
+      status: input.status ?? "in_progress",
     })
     .select()
     .single();
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
       throw new Error(`A project named "${name}" already exists.`);
+    }
+    throw new Error(error.message);
+  }
+  return data as Project;
+}
+
+// Partial update — only fields present in `input` are changed. Used by the
+// projects page's edit dialog, which always submits the full form, but
+// written to tolerate a partial payload in case that ever changes.
+export async function updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
+  const patch: Record<string, unknown> = {};
+  if (input.name !== undefined) patch.name = input.name.trim();
+  if (input.description !== undefined) patch.description = input.description.trim() || null;
+  if (input.start_date !== undefined) patch.start_date = input.start_date || null;
+  if (input.owner !== undefined) patch.owner = input.owner.trim() || null;
+  if (input.collaborators !== undefined) patch.collaborators = input.collaborators.trim() || null;
+  if (input.focal_group !== undefined) patch.focal_group = input.focal_group.trim() || null;
+  if (input.focal_region !== undefined) patch.focal_region = input.focal_region.trim() || null;
+  if (input.logo !== undefined) patch.logo = input.logo || null;
+  if (input.status !== undefined) patch.status = input.status;
+
+  const { data, error } = await getSupabase()
+    .from(PROJECTS_TABLE)
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) {
+    if (error.code === UNIQUE_VIOLATION) {
+      throw new Error(`A project named "${patch.name}" already exists.`);
     }
     throw new Error(error.message);
   }

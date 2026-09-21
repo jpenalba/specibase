@@ -18,6 +18,8 @@
   --accent-foreground: #171717;
   --destructive: #dc2626;
   --destructive-foreground: #fafafa;
+  --success: #dcfce7;
+  --success-foreground: #166534;
   --radius: 0.5rem;
 }
 
@@ -39,6 +41,8 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -63,6 +67,8 @@
     --muted-foreground: #a3a3a3;
     --accent: #262626;
     --accent-foreground: #ededed;
+    --success: #14532d;
+    --success-foreground: #86efac;
   }
 }
 

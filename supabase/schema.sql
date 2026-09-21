@@ -47,7 +47,11 @@ create table if not exists projects (
   owner text,
   collaborators text,
   focal_group text,
-  focal_region text
+  focal_region text,
+  -- An explicit icon choice (one of the categories in
+  -- src/lib/focal-group.ts); null means auto-match against focal_group.
+  logo text,
+  status text not null default 'in_progress' check (status in ('in_progress', 'completed'))
 );
 
 create table if not exists sample_projects (

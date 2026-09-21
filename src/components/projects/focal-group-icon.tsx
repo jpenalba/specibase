@@ -106,12 +106,16 @@ function Glyph({ category }: { category: FocalGroupCategory }) {
 
 export function FocalGroupIcon({
   focalGroup,
+  logo,
   size = 40,
 }: {
   focalGroup: string | null | undefined;
+  // An explicit category choice — wins over auto-matching focalGroup's
+  // text when set. Pass undefined/null to always auto-match.
+  logo?: FocalGroupCategory | null;
   size?: number;
 }) {
-  const category = categorizeFocalGroup(focalGroup);
+  const category = logo ?? categorizeFocalGroup(focalGroup);
   const color = CATEGORY_COLOR[category];
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" role="img" aria-label={`${category} icon`}>

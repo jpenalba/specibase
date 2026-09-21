@@ -8,6 +8,19 @@ export type FocalGroupCategory =
   | "plant"
   | "other";
 
+// All pickable categories, in the order the logo picker shows them —
+// "other" last since it's the generic catch-all.
+export const FOCAL_GROUP_CATEGORIES: FocalGroupCategory[] = [
+  "bird",
+  "mammal",
+  "fish",
+  "reptile",
+  "amphibian",
+  "insect",
+  "plant",
+  "other",
+];
+
 // Keyword -> category, checked as a substring against the lowercased
 // "Focal species/group" text. First match wins; order matters where a
 // word could plausibly appear under more than one category.
