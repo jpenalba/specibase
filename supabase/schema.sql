@@ -40,7 +40,14 @@ create table if not exists samples (
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+
+  description text,
+  start_date date,
+  owner text,
+  collaborators text,
+  focal_group text,
+  focal_region text
 );
 
 create table if not exists sample_projects (

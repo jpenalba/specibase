@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  createProject,
   getOrCreateProject,
   listProjects,
   listSampleProjectLinks,
@@ -18,6 +19,10 @@ export async function GET() {
   }
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -25,7 +30,25 @@ export async function POST(request: NextRequest) {
     if (!name) {
       return NextResponse.json({ errors: ["Project name is required"] }, { status: 400 });
     }
-    const project = await getOrCreateProject(name);
+
+    // The samples page's "associate with a project" picker only ever sends
+    // { name } — that flow reuses an existing project by name rather than
+    // erroring (see getOrCreateProject). Anything sending more than that is
+    // the dedicated /projects page deliberately creating a full profile, so
+    // a taken name there should fail loudly rather than silently handing
+    // back a different project and dropping every field just typed in.
+    const hasDetails = Object.keys(body).some((key) => key !== "name");
+    const project = hasDetails
+      ? await createProject({
+          name,
+          description: optionalString(body.description),
+          start_date: optionalString(body.start_date),
+          owner: optionalString(body.owner),
+          collaborators: optionalString(body.collaborators),
+          focal_group: optionalString(body.focal_group),
+          focal_region: optionalString(body.focal_region),
+        })
+      : await getOrCreateProject(name);
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
     return apiError(error);

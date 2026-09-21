@@ -7,7 +7,58 @@ export type Project = {
   id: string;
   name: string;
   created_at: string;
+  description: string | null;
+  start_date: string | null;
+  owner: string | null;
+  // Free-text, comma-separated — see parseCollaborators() in
+  // @/lib/collaborators for turning this into a list for display.
+  collaborators: string | null;
+  focal_group: string | null;
+  focal_region: string | null;
 };
+
+export type NewProjectInput = {
+  name: string;
+  description?: string;
+  start_date?: string;
+  owner?: string;
+  collaborators?: string;
+  focal_group?: string;
+  focal_region?: string;
+};
+
+// Postgres's unique_violation code — used to turn a duplicate project name
+// into a message worth showing someone, instead of a raw constraint error.
+const UNIQUE_VIOLATION = "23505";
+
+// Unlike getOrCreateProject() below, this always inserts a new row and
+// fails if the name is taken — right for the dedicated projects page,
+// where someone is deliberately filling out a full project profile and
+// silently handing back a different, existing project (dropping every
+// field they just typed) would be a worse surprise than an error.
+export async function createProject(input: NewProjectInput): Promise<Project> {
+  const name = input.name.trim();
+  const { data, error } = await getSupabase()
+    .from(PROJECTS_TABLE)
+    .insert({
+      name,
+      description: input.description?.trim() || null,
+      start_date: input.start_date || null,
+      owner: input.owner?.trim() || null,
+      collaborators: input.collaborators?.trim() || null,
+      focal_group: input.focal_group?.trim() || null,
+      focal_region: input.focal_region?.trim() || null,
+    })
+    .select()
+    .single();
+  if (error) {
+    if (error.code === UNIQUE_VIOLATION) {
+      throw new Error(`A project named "${name}" already exists.`);
+    }
+    throw new Error(error.message);
+  }
+  return data as Project;
+}
 
 export async function listProjects(): Promise<Project[]> {
   const { data, error } = await getSupabase()
