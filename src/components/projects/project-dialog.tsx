@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FocalGroupIcon } from "./focal-group-icon";
+import { SamplePicker } from "./sample-picker";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -67,10 +68,14 @@ function formFromProject(project: Project): FormState {
 // hazard the next time a field's added.
 export function ProjectDialog({
   project,
+  // Sample IDs already linked to this project (edit mode only) — diffed
+  // against the picker's selection on save to know what to add/remove.
+  linkedSampleIds,
   onSaved,
   trigger,
 }: {
   project?: Project;
+  linkedSampleIds?: string[];
   onSaved: () => void;
   trigger: React.ReactNode;
 }) {
@@ -78,6 +83,9 @@ export function ProjectDialog({
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<FormState>(() =>
     project ? formFromProject(project) : emptyForm()
+  );
+  const [selectedSampleIds, setSelectedSampleIds] = useState<Set<string>>(
+    () => new Set(linkedSampleIds)
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -92,8 +100,40 @@ export function ProjectDialog({
       // Reset each time it opens, so an earlier cancelled edit doesn't
       // linger into the next time this dialog is opened.
       setValues(project ? formFromProject(project) : emptyForm());
+      setSelectedSampleIds(new Set(linkedSampleIds));
       setErrors([]);
     }
+  }
+
+  // Only the difference from what was already linked needs to hit the
+  // network — untouched samples shouldn't cost a request either way.
+  async function syncSampleLinks(projectId: string): Promise<boolean> {
+    const before = new Set(linkedSampleIds);
+    const toAdd = [...selectedSampleIds].filter((id) => !before.has(id));
+    const toRemove = [...before].filter((id) => !selectedSampleIds.has(id));
+    if (toAdd.length === 0 && toRemove.length === 0) return true;
+
+    const requests: Promise<Response>[] = [];
+    if (toAdd.length > 0) {
+      requests.push(
+        fetch(`/api/projects/${projectId}/samples`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sampleIds: toAdd }),
+        })
+      );
+    }
+    if (toRemove.length > 0) {
+      requests.push(
+        fetch(`/api/projects/${projectId}/samples`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sampleIds: toRemove }),
+        })
+      );
+    }
+    const responses = await Promise.all(requests);
+    return responses.every((res) => res.ok);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -137,6 +177,11 @@ export function ProjectDialog({
         setErrors(data.errors ?? [`Couldn't ${isEdit ? "save" : "create"} the project.`]);
         return;
       }
+      const linksOk = await syncSampleLinks(data.project.id);
+      if (!linksOk) {
+        setErrors(["Project saved, but updating its linked samples failed. Try again."]);
+        return;
+      }
       setOpen(false);
       onSaved();
     } catch {
@@ -157,7 +202,7 @@ export function ProjectDialog({
           <DialogDescription>
             {isEdit
               ? "Update this project's details."
-              : "Set up a new project. You can link samples to it from the samples page or database."}
+              : "Set up a new project and optionally link existing samples to it."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
@@ -295,6 +340,11 @@ export function ProjectDialog({
               ))}
             </div>
           </div>
+
+          <SamplePicker
+            selectedIds={selectedSampleIds}
+            onChange={setSelectedSampleIds}
+          />
 
           <DialogFooter>
             <Button type="submit" disabled={submitting}>

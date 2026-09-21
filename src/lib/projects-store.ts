@@ -160,3 +160,16 @@ export async function linkSamplesToProject(
     .upsert(rows, { onConflict: "sample_id,project_id", ignoreDuplicates: true });
   if (error) throw new Error(error.message);
 }
+
+export async function unlinkSamplesFromProject(
+  sampleIds: string[],
+  projectId: string
+): Promise<void> {
+  if (sampleIds.length === 0) return;
+  const { error } = await getSupabase()
+    .from(LINK_TABLE)
+    .delete()
+    .eq("project_id", projectId)
+    .in("sample_id", sampleIds);
+  if (error) throw new Error(error.message);
+}

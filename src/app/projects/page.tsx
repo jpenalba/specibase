@@ -67,12 +67,14 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {projects.map((project) => {
-            const sampleCount = links.filter((l) => l.project_id === project.id).length;
+            const sampleIds = links
+              .filter((l) => l.project_id === project.id)
+              .map((l) => l.sample_id);
             return (
               <ProjectCard
                 key={project.id}
                 project={project}
-                sampleCount={sampleCount}
+                sampleIds={sampleIds}
                 onSaved={load}
               />
             );

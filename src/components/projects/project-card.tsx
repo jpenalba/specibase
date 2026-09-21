@@ -19,11 +19,11 @@ function Field({ label, value }: { label: string; value: string | null }) {
 
 export function ProjectCard({
   project,
-  sampleCount,
+  sampleIds,
   onSaved,
 }: {
   project: Project;
-  sampleCount: number;
+  sampleIds: string[];
   onSaved: () => void;
 }) {
   const collaborators = parseCollaborators(project.collaborators);
@@ -42,6 +42,7 @@ export function ProjectCard({
         </div>
         <ProjectDialog
           project={project}
+          linkedSampleIds={sampleIds}
           onSaved={onSaved}
           trigger={
             <button
@@ -80,7 +81,7 @@ export function ProjectCard({
           )}
         </dl>
         <p className="mt-3 text-xs text-muted-foreground">
-          {sampleCount} sample{sampleCount === 1 ? "" : "s"}
+          {sampleIds.length} sample{sampleIds.length === 1 ? "" : "s"}
         </p>
       </CardContent>
     </Card>
