@@ -24,3 +24,8 @@ export function colorForProjectIndex(index: number): string {
   // wrap around (with reduced distinctness) past the palette's length.
   return CATEGORICAL_HEX[(index % (CATEGORICAL_HEX.length - 1)) + 1];
 }
+
+// The same palette, offered as manual picks for a layer's map color —
+// deliberately the same basic set used for the automatic assignment above,
+// not a separate wider picker.
+export const PICKABLE_LAYER_COLORS = CATEGORICAL_HEX;

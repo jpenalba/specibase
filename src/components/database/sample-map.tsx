@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds } from "maplibre-gl";
 import { SampleRecord } from "@/lib/samples-store";
 import { MapLayer } from "@/lib/layers";
+import { LayerShape, shapePolygonPoints } from "@/lib/layer-shapes";
 import { FieldDef } from "@/lib/fields";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
@@ -131,6 +132,7 @@ type PointInfo = {
   sample: SampleRecord;
   point: [number, number];
   color: string;
+  shape: LayerShape;
   // Base marker size (not yet bumped for highlighting) — see displaySize().
   size: number;
   isHighlighted: boolean;
@@ -160,6 +162,7 @@ function computeVisiblePoints(
         sample,
         point,
         color: layer.color,
+        shape: layer.shape,
         size: isActive ? 16 : 12,
         isHighlighted: sample.id === highlightedSampleId,
       });
@@ -209,15 +212,36 @@ function displaySize(baseSize: number, highlighted: boolean): number {
   return highlighted ? baseSize + 8 : baseSize;
 }
 
-function applyMarkerStyle(el: HTMLDivElement, baseSize: number, highlighted: boolean) {
+// Builds the marker's fill+stroke as an inline SVG rather than drawing the
+// shape with CSS (border-radius, clip-path, etc.) — a single technique
+// that covers every shape uniformly, circle included, instead of a
+// different CSS trick per shape.
+function markerShapeSvg(shape: LayerShape, color: string, size: number, highlighted: boolean): string {
+  const strokeWidth = highlighted ? 3 : 2;
+  const strokeColor = highlighted ? HIGHLIGHT_RING_COLOR : "#ffffff";
+  const padding = strokeWidth / 2 + 1;
+  const half = size / 2;
+  const shapeMarkup =
+    shape === "circle"
+      ? `<circle cx="${half}" cy="${half}" r="${half - padding}" />`
+      : `<polygon points="${shapePolygonPoints(shape, size, padding)!.map(([x, y]) => `${x},${y}`).join(" ")}" />`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));">
+    <g fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round">${shapeMarkup}</g>
+  </svg>`;
+}
+
+function applyMarkerStyle(
+  el: HTMLDivElement,
+  shape: LayerShape,
+  color: string,
+  baseSize: number,
+  highlighted: boolean
+) {
   const size = displaySize(baseSize, highlighted);
   el.style.width = `${size}px`;
   el.style.height = `${size}px`;
-  el.style.border = highlighted ? `3px solid ${HIGHLIGHT_RING_COLOR}` : "2px solid #ffffff";
-  el.style.boxShadow = highlighted
-    ? "0 0 0 2px #ffffff, 0 1px 4px rgba(0,0,0,0.6)"
-    : "0 0 2px rgba(0,0,0,0.5)";
   el.style.zIndex = highlighted ? "10" : "";
+  el.innerHTML = markerShapeSvg(shape, color, size, highlighted);
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -257,10 +281,12 @@ export function SampleMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
-  // Tracks each marker's sample id and base (non-highlighted) size alongside
-  // the Marker/element itself, so the highlight effect below can restyle
-  // the one marker that changed without rebuilding the whole set.
-  const markersRef = useRef<{ id: string; marker: Marker; el: HTMLDivElement; baseSize: number }[]>([]);
+  // Tracks each marker's sample id, shape/color, and base (non-highlighted)
+  // size alongside the Marker/element itself, so the highlight effect below
+  // can restyle the one marker that changed without rebuilding the whole set.
+  const markersRef = useRef<
+    { id: string; marker: Marker; el: HTMLDivElement; shape: LayerShape; color: string; baseSize: number }[]
+  >([]);
   const lastCoordsRef = useRef<[number, number][]>([]);
   const [basemap, setBasemap] = useState<BasemapId>("streets");
   const [exporting, setExporting] = useState(false);
@@ -371,14 +397,12 @@ export function SampleMap({
         );
         const coords: [number, number][] = [];
 
-        for (const { sample, point, color, size, isHighlighted } of points) {
+        for (const { sample, point, color, shape, size, isHighlighted } of points) {
           coords.push(point);
 
           const el = document.createElement("div");
-          el.style.borderRadius = "50%";
-          el.style.backgroundColor = color;
           el.style.cursor = "pointer";
-          applyMarkerStyle(el, size, isHighlighted);
+          applyMarkerStyle(el, shape, color, size, isHighlighted);
 
           const popup = new Popup({
             offset: displaySize(size, isHighlighted) / 2 + 4,
@@ -386,7 +410,7 @@ export function SampleMap({
           }).setHTML(buildPopupHtml(sample, popupColumns));
 
           const marker = new Marker({ element: el }).setLngLat(point).setPopup(popup).addTo(map);
-          markersRef.current.push({ id: sample.id, marker, el, baseSize: size });
+          markersRef.current.push({ id: sample.id, marker, el, shape, color, baseSize: size });
         }
 
         lastCoordsRef.current = coords;
@@ -426,7 +450,7 @@ export function SampleMap({
     if (!map) return;
 
     for (const entry of markersRef.current) {
-      applyMarkerStyle(entry.el, entry.baseSize, entry.id === highlightedSampleId);
+      applyMarkerStyle(entry.el, entry.shape, entry.color, entry.baseSize, entry.id === highlightedSampleId);
     }
 
     if (highlightedSampleId && styleReadyRef.current) {
@@ -484,17 +508,32 @@ export function SampleMap({
         hiddenSampleIds,
         highlightedIdRef.current
       );
-      for (const { point, color, size, isHighlighted } of points) {
+      for (const { point, color, shape, size, isHighlighted } of points) {
         const projected = map.project(point);
         const x = projected.x * dpr;
         const y = projected.y * dpr;
-        const radius = (displaySize(size, isHighlighted) / 2) * dpr;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        const drawSize = displaySize(size, isHighlighted) * dpr;
+        const strokeWidth = (isHighlighted ? 3 : 2) * dpr;
+        const padding = strokeWidth / 2 + dpr;
+
         ctx.fillStyle = color;
-        ctx.fill();
-        ctx.lineWidth = (isHighlighted ? 3 : 2) * dpr;
         ctx.strokeStyle = isHighlighted ? HIGHLIGHT_RING_COLOR : "#ffffff";
+        ctx.lineWidth = strokeWidth;
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        if (shape === "circle") {
+          ctx.arc(x, y, drawSize / 2 - padding, 0, Math.PI * 2);
+        } else {
+          const offset = drawSize / 2;
+          shapePolygonPoints(shape, drawSize, padding)!.forEach(([px, py], i) => {
+            const vx = x - offset + px;
+            const vy = y - offset + py;
+            if (i === 0) ctx.moveTo(vx, vy);
+            else ctx.lineTo(vx, vy);
+          });
+          ctx.closePath();
+        }
+        ctx.fill();
         ctx.stroke();
       }
 
@@ -526,10 +565,22 @@ export function SampleMap({
 
       let legendY = imageTop + imgHeight + 20;
       doc.setFontSize(9);
+      const legendMarkerSize = 8;
       for (const layer of legendLayers) {
         const [r, g, b] = hexToRgb(layer.color);
         doc.setFillColor(r, g, b);
-        doc.circle(margin + 4, legendY - 3, 4, "F");
+        const cx = margin + 4;
+        const cy = legendY - 3;
+        if (layer.shape === "circle") {
+          doc.circle(cx, cy, legendMarkerSize / 2, "F");
+        } else {
+          const half = legendMarkerSize / 2;
+          const points = shapePolygonPoints(layer.shape, legendMarkerSize, 0)!.map(
+            ([px, py]) => [cx - half + px, cy - half + py] as [number, number]
+          );
+          const deltas = points.slice(1).map(([px, py], i) => [px - points[i][0], py - points[i][1]]);
+          doc.lines(deltas, points[0][0], points[0][1], [1, 1], "F", true);
+        }
         doc.setTextColor(30, 30, 30);
         doc.text(`${layer.label} (${layer.sampleIds.size})`, margin + 14, legendY);
         legendY += 14;

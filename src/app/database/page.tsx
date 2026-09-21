@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { SampleRecord } from "@/lib/samples-store";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
-import { buildLayers, ALL_LAYER_ID } from "@/lib/layers";
+import { buildLayers, ALL_LAYER_ID, LayerStyle } from "@/lib/layers";
+import { LayerShape } from "@/lib/layer-shapes";
 import { getVisibleColumns } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
@@ -27,6 +28,7 @@ export default function DatabasePage() {
   const [mapSyncError, setMapSyncError] = useState<string | null>(null);
   const [hiddenSampleIds, setHiddenSampleIds] = useState<Set<string>>(new Set());
   const [highlightedSampleId, setHighlightedSampleId] = useState<string | null>(null);
+  const [layerStyles, setLayerStyles] = useState<Map<string, LayerStyle>>(new Map());
   const { selected, toggle } = useOptionalFields();
   const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
 
@@ -71,8 +73,8 @@ export default function DatabasePage() {
   }, []);
 
   const { root, children } = useMemo(
-    () => buildLayers(samples, projects, links),
-    [samples, projects, links]
+    () => buildLayers(samples, projects, links, layerStyles),
+    [samples, projects, links, layerStyles]
   );
   const allLayers = useMemo(() => [root, ...children], [root, children]);
 
@@ -101,6 +103,22 @@ export default function DatabasePage() {
     // A hidden sample has no marker to highlight, so drop a stale selection
     // rather than leave the table showing a highlight the map can't show.
     setHighlightedSampleId((current) => (current === sampleId ? null : current));
+  }
+
+  function setLayerColor(layerId: string, color: string) {
+    setLayerStyles((prev) => {
+      const next = new Map(prev);
+      next.set(layerId, { ...next.get(layerId), color });
+      return next;
+    });
+  }
+
+  function setLayerShape(layerId: string, shape: LayerShape) {
+    setLayerStyles((prev) => {
+      const next = new Map(prev);
+      next.set(layerId, { ...next.get(layerId), shape });
+      return next;
+    });
   }
 
   function selectSample(sampleId: string) {
@@ -165,6 +183,8 @@ export default function DatabasePage() {
             activeLayerId={activeLayerId}
             onToggleVisible={toggleVisible}
             onSelectActive={setActiveLayerId}
+            onSetColor={setLayerColor}
+            onSetShape={setLayerShape}
           />
         </div>
       </div>
