@@ -61,42 +61,43 @@ const BASEMAPS: Record<
   },
   plain: {
     label: "Plain",
-    // A single pre-rendered world image (gray countries, white borders,
-    // white ocean — see scripts/build-plain-basemap-image.mjs) rather than
-    // a live GeoJSON source styled with fill/line layers. MapLibre's normal
-    // way of drawing vector boundaries relies on its worker pipeline
-    // (parsing and tiling happen off the main thread), and that pipeline
-    // hangs indefinitely in this app's Turbopack-bundled build — confirmed
-    // with Playwright to reproduce identically in both `next dev` and a
-    // production `next build && next start`, even with inline GeoJSON data
-    // and no network fetch involved, while the exact same style renders
-    // fine outside of Next/Turbopack. A raster image source sidesteps that
-    // pipeline entirely (no worker involved), which is also why Streets and
-    // Satellite — both raster — were never affected by this bug.
+    // A pre-rendered raster tile pyramid (gray countries, white borders,
+    // white ocean — see scripts/build-plain-basemap-tiles.mjs), the same
+    // shape of source as Streets/Satellite, rather than a single static
+    // image or a live GeoJSON source styled with fill/line layers:
+    // - A single image pixelates once zoomed in past its fixed resolution;
+    //   real tiles avoid that by having sharper images at deeper zooms,
+    //   same as any other raster basemap.
+    // - MapLibre's normal way of drawing vector boundaries (a GeoJSON
+    //   source plus fill/line layers) relies on its worker pipeline
+    //   (parsing/tiling off the main thread), and that pipeline hangs
+    //   indefinitely in this app's Turbopack-bundled build — confirmed with
+    //   Playwright to reproduce identically in `next dev` and a production
+    //   build, even with inline data and no network fetch involved, while
+    //   the identical style renders fine outside of Next/Turbopack. Raster
+    //   tiles sidestep that pipeline entirely (plain image fetches, no
+    //   worker), which is also why Streets and Satellite were never
+    //   affected by this bug.
     attribution: "Natural Earth",
     style: {
       version: 8,
       sources: {
         world: {
-          type: "image",
-          url: "/plain-basemap.png",
-          // Corners in order: top-left, top-right, bottom-right, bottom-left.
-          // Clamped to ±85.0511° (the standard Web Mercator latitude limit)
-          // rather than the poles: Mercator's Y coordinate goes to infinity
-          // at ±90°, which MapLibre rejects outright ("outside of bounds")
-          // for an image source's corners. The image itself still covers
-          // the full ±90° vertically, so this just crops a sliver of
-          // Antarctica/the Arctic Ocean that no web map projection can
-          // show anyway.
-          coordinates: [
-            [-180, 85.0511],
-            [180, 85.0511],
-            [180, -85.0511],
-            [-180, -85.0511],
-          ],
+          type: "raster",
+          tiles: ["/plain-tiles/{z}/{x}/{y}.png"],
+          tileSize: 256,
+          // Matches MAX_ZOOM in build-plain-basemap-tiles.mjs — past this,
+          // MapLibre oversamples the deepest tile it has, the same graceful
+          // degradation Satellite gets past its own source's max zoom. The
+          // underlying 110m-simplified coastlines have no more real detail
+          // to show past this zoom anyway.
+          maxzoom: 6,
         },
       },
       layers: [
+        // Tiles that don't exist (pure ocean, skipped at build time to
+        // avoid generating and shipping thousands of blank files) 404 and
+        // render nothing, so this shows through as the ocean color.
         { id: "water", type: "background", paint: { "background-color": "#ffffff" } },
         { id: "world", type: "raster", source: "world" },
       ],
@@ -113,7 +114,14 @@ function pointFor(s: SampleRecord): [number, number] | null {
   return [lon, lat];
 }
 
-type PointInfo = { sample: SampleRecord; point: [number, number]; color: string; size: number };
+type PointInfo = {
+  sample: SampleRecord;
+  point: [number, number];
+  color: string;
+  // Base marker size (not yet bumped for highlighting) — see displaySize().
+  size: number;
+  isHighlighted: boolean;
+};
 
 // Shared by the marker-rendering effect and the PDF export, so what gets
 // drawn on screen and what gets drawn into the exported image can't drift
@@ -122,7 +130,9 @@ function computeVisiblePoints(
   samples: SampleRecord[],
   layers: MapLayer[],
   visibleLayerIds: Set<string>,
-  activeLayerId: string
+  activeLayerId: string,
+  hiddenSampleIds: Set<string>,
+  highlightedSampleId: string | null
 ): PointInfo[] {
   const points: PointInfo[] = [];
   for (const layer of layers) {
@@ -130,9 +140,16 @@ function computeVisiblePoints(
     const isActive = layer.id === activeLayerId;
     for (const sample of samples) {
       if (!layer.sampleIds.has(sample.id)) continue;
+      if (hiddenSampleIds.has(sample.id)) continue;
       const point = pointFor(sample);
       if (!point) continue;
-      points.push({ sample, point, color: layer.color, size: isActive ? 16 : 12 });
+      points.push({
+        sample,
+        point,
+        color: layer.color,
+        size: isActive ? 16 : 12,
+        isHighlighted: sample.id === highlightedSampleId,
+      });
     }
   }
   return points;
@@ -170,6 +187,26 @@ function buildPopupHtml(sample: SampleRecord, columns: FieldDef[]): string {
   return `<div style="font-size:13px;min-width:200px;">${rows}</div>`;
 }
 
+// A distinct ring color for whichever marker is highlighted (from clicking
+// its row in the table) — amber reads clearly against every layer color and
+// both basemap tones, without being confused for a layer's own color.
+const HIGHLIGHT_RING_COLOR = "#f59e0b";
+
+function displaySize(baseSize: number, highlighted: boolean): number {
+  return highlighted ? baseSize + 8 : baseSize;
+}
+
+function applyMarkerStyle(el: HTMLDivElement, baseSize: number, highlighted: boolean) {
+  const size = displaySize(baseSize, highlighted);
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.style.border = highlighted ? `3px solid ${HIGHLIGHT_RING_COLOR}` : "2px solid #ffffff";
+  el.style.boxShadow = highlighted
+    ? "0 0 0 2px #ffffff, 0 1px 4px rgba(0,0,0,0.6)"
+    : "0 0 2px rgba(0,0,0,0.5)";
+  el.style.zIndex = highlighted ? "10" : "";
+}
+
 function hexToRgb(hex: string): [number, number, number] {
   const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return match
@@ -184,6 +221,8 @@ export function SampleMap({
   activeLayerId,
   popupColumns,
   onSyncError,
+  hiddenSampleIds,
+  highlightedSampleId,
 }: {
   samples: SampleRecord[];
   layers: MapLayer[];
@@ -196,10 +235,19 @@ export function SampleMap({
   // in the browser console — most people using this app won't have
   // DevTools open.
   onSyncError?: (message: string) => void;
+  // Samples unticked in the table's per-row checkbox — excluded from the
+  // map (and the PDF export) entirely, same set regardless of active layer.
+  hiddenSampleIds: Set<string>;
+  // The sample whose table row was last clicked — its marker is drawn
+  // larger with a highlight ring, and the map pans/zooms to it.
+  highlightedSampleId: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
-  const markersRef = useRef<Marker[]>([]);
+  // Tracks each marker's sample id and base (non-highlighted) size alongside
+  // the Marker/element itself, so the highlight effect below can restyle
+  // the one marker that changed without rebuilding the whole set.
+  const markersRef = useRef<{ id: string; marker: Marker; el: HTMLDivElement; baseSize: number }[]>([]);
   const lastCoordsRef = useRef<[number, number][]>([]);
   const [basemap, setBasemap] = useState<BasemapId>("streets");
   const [exporting, setExporting] = useState(false);
@@ -218,6 +266,11 @@ export function SampleMap({
   // constructor already applied the initial style — and only swap styles
   // on an actual change.
   const currentStyleIdRef = useRef<BasemapId | null>(null);
+  // Mirrors the highlightedSampleId prop for syncMarkers to read without
+  // needing it in that effect's dependency array — highlighting a row
+  // shouldn't rebuild every marker and re-fit the map bounds (see the
+  // highlight effect below, which restyles just the one marker instead).
+  const highlightedIdRef = useRef<string | null>(null);
 
   // Creates the map exactly once, on mount, and never destroys it until
   // unmount. Basemap switches are handled by a separate effect that calls
@@ -259,7 +312,7 @@ export function SampleMap({
     mapRef.current = map;
 
     return () => {
-      markersRef.current.forEach((m) => m.remove());
+      markersRef.current.forEach(({ marker }) => marker.remove());
       markersRef.current = [];
       map.remove();
       if (mapRef.current === map) mapRef.current = null;
@@ -292,30 +345,35 @@ export function SampleMap({
         // Markers are plain DOM elements positioned by MapLibre, not a
         // WebGL style layer — simplest to just clear and rebuild them all
         // rather than diff which ones changed.
-        markersRef.current.forEach((m) => m.remove());
+        markersRef.current.forEach(({ marker }) => marker.remove());
         markersRef.current = [];
 
-        const points = computeVisiblePoints(samples, layers, visibleLayerIds, activeLayerId);
+        const points = computeVisiblePoints(
+          samples,
+          layers,
+          visibleLayerIds,
+          activeLayerId,
+          hiddenSampleIds,
+          highlightedIdRef.current
+        );
         const coords: [number, number][] = [];
 
-        for (const { sample, point, color, size } of points) {
+        for (const { sample, point, color, size, isHighlighted } of points) {
           coords.push(point);
 
           const el = document.createElement("div");
-          el.style.width = `${size}px`;
-          el.style.height = `${size}px`;
           el.style.borderRadius = "50%";
           el.style.backgroundColor = color;
-          el.style.border = "2px solid #ffffff";
-          el.style.boxShadow = "0 0 2px rgba(0,0,0,0.5)";
           el.style.cursor = "pointer";
+          applyMarkerStyle(el, size, isHighlighted);
 
-          const popup = new Popup({ offset: size / 2 + 4, closeButton: true }).setHTML(
-            buildPopupHtml(sample, popupColumns)
-          );
+          const popup = new Popup({
+            offset: displaySize(size, isHighlighted) / 2 + 4,
+            closeButton: true,
+          }).setHTML(buildPopupHtml(sample, popupColumns));
 
           const marker = new Marker({ element: el }).setLngLat(point).setPopup(popup).addTo(map);
-          markersRef.current.push(marker);
+          markersRef.current.push({ id: sample.id, marker, el, baseSize: size });
         }
 
         lastCoordsRef.current = coords;
@@ -343,7 +401,29 @@ export function SampleMap({
     // basemap switch's "idle" — see the effects above), that handler will
     // call latestSyncMarkersRef.current() — which by then points at this
     // run's syncMarkers — once the style settles.
-  }, [samples, layers, visibleLayerIds, activeLayerId, popupColumns, onSyncError]);
+  }, [samples, layers, visibleLayerIds, activeLayerId, hiddenSampleIds, popupColumns, onSyncError]);
+
+  // Restyles just the previously/newly highlighted marker in place, and
+  // pans/zooms to the new one — deliberately not folded into the effect
+  // above, since clicking a table row shouldn't rebuild every marker and
+  // re-fit the map to all of them.
+  useEffect(() => {
+    highlightedIdRef.current = highlightedSampleId;
+    const map = mapRef.current;
+    if (!map) return;
+
+    for (const entry of markersRef.current) {
+      applyMarkerStyle(entry.el, entry.baseSize, entry.id === highlightedSampleId);
+    }
+
+    if (highlightedSampleId && styleReadyRef.current) {
+      const sample = samples.find((s) => s.id === highlightedSampleId);
+      const point = sample ? pointFor(sample) : null;
+      if (point) {
+        map.flyTo({ center: point, zoom: Math.max(map.getZoom(), 6), duration: 600 });
+      }
+    }
+  }, [highlightedSampleId, samples]);
 
   function fitToData() {
     const map = mapRef.current;
@@ -381,19 +461,27 @@ export function SampleMap({
 
       // Markers are DOM elements, invisible to the WebGL canvas — redrawn
       // here at their true projected position so the export matches what's
-      // actually on screen.
-      const points = computeVisiblePoints(samples, layers, visibleLayerIds, activeLayerId);
-      for (const { point, color, size } of points) {
+      // actually on screen (hidden samples excluded, the highlighted one
+      // drawn with the same ring it has on screen).
+      const points = computeVisiblePoints(
+        samples,
+        layers,
+        visibleLayerIds,
+        activeLayerId,
+        hiddenSampleIds,
+        highlightedIdRef.current
+      );
+      for (const { point, color, size, isHighlighted } of points) {
         const projected = map.project(point);
         const x = projected.x * dpr;
         const y = projected.y * dpr;
-        const radius = (size / 2) * dpr;
+        const radius = (displaySize(size, isHighlighted) / 2) * dpr;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
-        ctx.lineWidth = 2 * dpr;
-        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = (isHighlighted ? 3 : 2) * dpr;
+        ctx.strokeStyle = isHighlighted ? HIGHLIGHT_RING_COLOR : "#ffffff";
         ctx.stroke();
       }
 

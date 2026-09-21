@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { getVisibleColumns, FieldDef } from "@/lib/fields";
 import { SampleRecord } from "@/lib/samples-store";
 import { formatToDDMMYYYY } from "@/lib/dates";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableHeader,
@@ -31,9 +33,21 @@ function compareValues(a: unknown, b: unknown, type: FieldDef["type"]): number {
 export function SampleTable({
   samples,
   visibleOptionalKeys,
+  hiddenSampleIds,
+  onToggleHidden,
+  highlightedSampleId,
+  onSelectSample,
 }: {
   samples: SampleRecord[];
   visibleOptionalKeys: string[];
+  // Samples unticked here are excluded from the map — the tick box sits to
+  // the left of every other column.
+  hiddenSampleIds: Set<string>;
+  onToggleHidden: (id: string) => void;
+  // Clicking anywhere on a row except the tick box highlights that sample
+  // on the map; clicking the already-highlighted row clears it.
+  highlightedSampleId: string | null;
+  onSelectSample: (id: string) => void;
 }) {
   const columns = getVisibleColumns(visibleOptionalKeys);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -73,6 +87,9 @@ export function SampleTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-0">
+              <span className="sr-only">Show on map</span>
+            </TableHead>
             {columns.map((col) => (
               <TableHead key={col.key}>
                 <button
@@ -90,27 +107,43 @@ export function SampleTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedSamples.map((sample) => (
-            <TableRow key={sample.id}>
-              {columns.map((col) => {
-                const value = sample[col.key];
-                if (value === undefined || value === "") {
+          {sortedSamples.map((sample) => {
+            const isHidden = hiddenSampleIds.has(sample.id);
+            const isHighlighted = sample.id === highlightedSampleId;
+            return (
+              <TableRow
+                key={sample.id}
+                data-state={isHighlighted ? "selected" : undefined}
+                onClick={() => onSelectSample(sample.id)}
+                className="cursor-pointer"
+              >
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={!isHidden}
+                    onCheckedChange={() => onToggleHidden(sample.id)}
+                    aria-label={`Show ${sample.id} on the map`}
+                  />
+                </TableCell>
+                {columns.map((col) => {
+                  const value = sample[col.key];
+                  if (value === undefined || value === "") {
+                    return (
+                      <TableCell key={col.key} className={cn(isHidden && "opacity-50")}>
+                        <span className="text-muted-foreground">—</span>
+                      </TableCell>
+                    );
+                  }
                   return (
-                    <TableCell key={col.key}>
-                      <span className="text-muted-foreground">—</span>
+                    <TableCell key={col.key} className={cn(isHidden && "opacity-50")}>
+                      {col.type === "date"
+                        ? formatToDDMMYYYY(String(value))
+                        : String(value)}
                     </TableCell>
                   );
-                }
-                return (
-                  <TableCell key={col.key}>
-                    {col.type === "date"
-                      ? formatToDDMMYYYY(String(value))
-                      : String(value)}
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          ))}
+                })}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

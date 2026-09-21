@@ -25,6 +25,8 @@ export default function DatabasePage() {
   );
   const [activeLayerId, setActiveLayerId] = useState<string>(ALL_LAYER_ID);
   const [mapSyncError, setMapSyncError] = useState<string | null>(null);
+  const [hiddenSampleIds, setHiddenSampleIds] = useState<Set<string>>(new Set());
+  const [highlightedSampleId, setHighlightedSampleId] = useState<string | null>(null);
   const { selected, toggle } = useOptionalFields();
   const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
 
@@ -89,6 +91,22 @@ export default function DatabasePage() {
     });
   }
 
+  function toggleSampleHidden(sampleId: string) {
+    setHiddenSampleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sampleId)) next.delete(sampleId);
+      else next.add(sampleId);
+      return next;
+    });
+    // A hidden sample has no marker to highlight, so drop a stale selection
+    // rather than leave the table showing a highlight the map can't show.
+    setHighlightedSampleId((current) => (current === sampleId ? null : current));
+  }
+
+  function selectSample(sampleId: string) {
+    setHighlightedSampleId((current) => (current === sampleId ? null : sampleId));
+  }
+
   function exportCsv() {
     const csv = samplesToCsv(tableSamples, popupColumns);
     const slug = activeLayer.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -135,6 +153,8 @@ export default function DatabasePage() {
             activeLayerId={activeLayerId}
             popupColumns={popupColumns}
             onSyncError={setMapSyncError}
+            hiddenSampleIds={hiddenSampleIds}
+            highlightedSampleId={highlightedSampleId}
           />
         </div>
         <div className="w-64 shrink-0">
@@ -169,7 +189,14 @@ export default function DatabasePage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : (
-        <SampleTable samples={tableSamples} visibleOptionalKeys={selected} />
+        <SampleTable
+          samples={tableSamples}
+          visibleOptionalKeys={selected}
+          hiddenSampleIds={hiddenSampleIds}
+          onToggleHidden={toggleSampleHidden}
+          highlightedSampleId={highlightedSampleId}
+          onSelectSample={selectSample}
+        />
       )}
     </div>
   );
