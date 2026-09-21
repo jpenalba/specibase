@@ -19,6 +19,22 @@ function isBlank(value: string | undefined): boolean {
 // no spaces or punctuation that would need escaping anywhere downstream.
 const SAMPLE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
+// Basic Latin plus Latin-1 Supplement letters — covers accented vowels and
+// consonants used across Western/Central European place names (é, ü, ñ, ç,
+// å, ø, æ, œ...) and the German eszett (ß), without reaching into other
+// scripts (Cyrillic, Greek, CJK, etc.), which aren't supported yet. The
+// ×/÷ gaps exclude the multiplication/division signs that sit
+// inside that Unicode block but aren't letters.
+const LOCALITY_CHAR_PATTERN = /[A-Za-z0-9À-ÖØ-öø-ÿ\s.,'()/&-]/;
+
+function findUnsupportedLocalityChars(value: string): string[] {
+  const found = new Set<string>();
+  for (const char of value) {
+    if (!LOCALITY_CHAR_PATTERN.test(char)) found.add(char);
+  }
+  return [...found];
+}
+
 // Shared by both the client-side staging preview and the server-side
 // commit, so "what counts as a valid row" is defined in exactly one place.
 export function validateRow(
@@ -50,6 +66,16 @@ export function validateRow(
   const latProvided = !isBlank(row.latitude);
   const lonProvided = !isBlank(row.longitude);
   const localityProvided = !isBlank(row.locality);
+
+  if (localityProvided) {
+    const badChars = findUnsupportedLocalityChars(row.locality);
+    if (badChars.length > 0) {
+      const list = badChars.map((c) => `"${c}"`).join(", ");
+      errors.push(
+        `Locality contains unsupported character(s): ${list}. Accented Latin letters (é, ü, ñ, etc.) and ß are supported; other alphabets aren't yet.`
+      );
+    }
+  }
 
   if (latProvided !== lonProvided) {
     errors.push("Latitude and longitude must both be provided, or both left blank");
