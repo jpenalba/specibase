@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Search, Trash2 } from "lucide-react";
 import { getVisibleColumns, FieldDef } from "@/lib/fields";
 import { DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
 import { RawRow } from "@/lib/validation";
@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/table";
 
 type SortState = { key: string; direction: "asc" | "desc" };
+
+const PAGE_SIZES = [20, 50, 100] as const;
 
 function compareValues(a: unknown, b: unknown, type: FieldDef["type"]): number {
   const aEmpty = a === undefined || a === "" || a === null;
@@ -88,6 +90,11 @@ export function SampleTable({
 }) {
   const columns = getVisibleColumns(visibleOptionalKeys);
   const [sort, setSort] = useState<SortState | null>(null);
+  // Sample ID and species only for now — Genus/Family/Order will join
+  // this once the schema has somewhere to put them.
+  const [query, setQuery] = useState("");
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  const [page, setPage] = useState(0);
   const [editingSample, setEditingSample] = useState<SampleRecord | null>(null);
   // Bumped every time the edit dialog is opened, forcing it to remount
   // (see its own comment) so reopening the same sample after a cancelled
@@ -106,19 +113,39 @@ export function SampleTable({
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
 
+  const filteredSamples = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return samples;
+    return samples.filter(
+      (s) =>
+        s.primary_identifier.toLowerCase().includes(q) || s.species.toLowerCase().includes(q)
+    );
+  }, [samples, query]);
+
   const sortedSamples = useMemo(() => {
-    if (!sort) return samples;
+    if (!sort) return filteredSamples;
     const column = columns.find((c) => c.key === sort.key);
-    if (!column) return samples;
+    if (!column) return filteredSamples;
     const sign = sort.direction === "asc" ? 1 : -1;
-    return [...samples].sort(
+    return [...filteredSamples].sort(
       (a, b) => sign * compareValues(a[column.key], b[column.key], column.type)
     );
     // columns is derived fresh each render from visibleOptionalKeys, so it's
     // deliberately left out of the dependency list to avoid re-sorting on
     // every render — sort.key is enough to look the column back up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [samples, sort]);
+  }, [filteredSamples, sort]);
+
+  // Derived fresh from `page` every render rather than synced back into
+  // state — if the result set shrinks (a filter, a delete, a page-size
+  // change) enough to push the stored page out of range, this just quietly
+  // clamps for as long as it needs to, no effect required.
+  const totalPages = Math.max(1, Math.ceil(sortedSamples.length / pageSize));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pageSamples = sortedSamples.slice(
+    currentPage * pageSize,
+    currentPage * pageSize + pageSize
+  );
 
   function toggleSort(key: string) {
     setSort((prev) => {
@@ -199,9 +226,24 @@ export function SampleTable({
   }
 
   const dirtyCount = Object.keys(drafts).length;
+  const rangeStart = sortedSamples.length === 0 ? 0 : currentPage * pageSize + 1;
+  const rangeEnd = Math.min(sortedSamples.length, currentPage * pageSize + pageSize);
 
   return (
     <div className="flex flex-col gap-2">
+      <div className="relative w-full max-w-sm">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          className="pl-8"
+          placeholder="Search by Sample ID or species"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(0);
+          }}
+        />
+      </div>
+
       {editMode && (
         <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
@@ -228,6 +270,11 @@ export function SampleTable({
         </div>
       )}
 
+      {sortedSamples.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+          No samples match &quot;{query}&quot;.
+        </div>
+      ) : (
       <div className="rounded-lg border border-border">
         <Table>
           <TableHeader>
@@ -255,7 +302,7 @@ export function SampleTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedSamples.map((sample) => {
+            {pageSamples.map((sample) => {
               const isHidden = hiddenSampleIds.has(sample.id);
               const isHighlighted = sample.id === highlightedSampleId;
               const draft = drafts[sample.id];
@@ -353,6 +400,52 @@ export function SampleTable({
             })}
           </TableBody>
         </Table>
+      </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <span>Rows per page</span>
+          <select
+            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(0);
+            }}
+          >
+            {PAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <span>
+            {sortedSamples.length === 0
+              ? "0 of 0"
+              : `${rangeStart}–${rangeEnd} of ${sortedSamples.length}`}
+          </span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              className="rounded-md border border-input px-3 py-1 hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1}
+              className="rounded-md border border-input px-3 py-1 hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
 
       <SampleEditDialog
