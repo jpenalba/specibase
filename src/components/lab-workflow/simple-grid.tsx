@@ -95,13 +95,20 @@ export function SimpleGrid({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="sticky left-0 z-10 h-8 bg-card">Sample ID</TableHead>
-            <TableHead className="h-8">Species</TableHead>
+            <TableHead className="sticky left-0 z-10 h-8 bg-card align-bottom">Sample ID</TableHead>
+            <TableHead className="h-8 align-bottom">Species</TableHead>
             {steps.map((step) => (
-              <TableHead key={step.id} className="h-8 text-center">
-                {step.label}
+              <TableHead key={step.id} className="relative h-28 w-10 min-w-10 p-0 align-bottom">
+                <span className="absolute bottom-2 left-1/2 origin-bottom-left -rotate-45 whitespace-nowrap text-xs font-medium">
+                  {step.label}
+                </span>
               </TableHead>
             ))}
+            {/* Real trailing column, not just padding — an angled label
+                needs actual layout width to its right to avoid being
+                clipped by the scroll container, which CSS padding on the
+                table doesn't reliably provide. */}
+            <TableHead className="w-10 min-w-10 p-0" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -114,7 +121,7 @@ export function SimpleGrid({
               {steps.map((step) => {
                 const status = statusFor(step.id, sample.id);
                 return (
-                  <TableCell key={step.id} className="py-1 text-center">
+                  <TableCell key={step.id} className="w-10 min-w-10 py-1 text-center">
                     <button
                       type="button"
                       title={STATUS_LABELS[status]}
@@ -132,6 +139,7 @@ export function SimpleGrid({
                   </TableCell>
                 );
               })}
+              <TableCell className="w-10 min-w-10" />
             </TableRow>
           ))}
         </TableBody>

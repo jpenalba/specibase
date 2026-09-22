@@ -52,10 +52,14 @@ export function WorkflowSection({
   projectId,
   workflowId,
   allSamples,
+  onDeleted,
 }: {
   projectId: string;
   workflowId: string;
   allSamples: SampleRecord[];
+  // Called after this workflow is deleted (from its Edit dialog) so the
+  // page can drop this section from the stacked list.
+  onDeleted: () => void;
 }) {
   const [workflow, setWorkflow] = useState<LabWorkflow | null>(null);
   const [steps, setSteps] = useState<LabWorkflowStep[]>([]);
@@ -168,6 +172,7 @@ export function WorkflowSection({
               projectId={projectId}
               workflow={workflow}
               onSaved={load}
+              onDeleted={onDeleted}
               trigger={
                 <button
                   type="button"

@@ -70,6 +70,7 @@ export default function ProjectWorkflowsPage() {
             projectId={projectId}
             workflowId={workflow.id}
             allSamples={allSamples}
+            onDeleted={load}
           />
         ))
       )}

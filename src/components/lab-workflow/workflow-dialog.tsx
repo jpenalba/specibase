@@ -38,6 +38,7 @@ export function WorkflowDialog({
   projectId,
   workflow,
   onSaved,
+  onDeleted,
   trigger,
   open: openProp,
   onOpenChange: onOpenChangeProp,
@@ -45,6 +46,9 @@ export function WorkflowDialog({
   projectId: string;
   workflow?: LabWorkflow;
   onSaved: (workflow: LabWorkflow) => void;
+  // Only relevant in edit mode — called after the workflow is deleted so
+  // the caller can drop its section from the page.
+  onDeleted?: () => void;
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -57,6 +61,7 @@ export function WorkflowDialog({
   const [steps, setSteps] = useState<BuilderStep[]>(defaultSteps());
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   function setOpen(next: boolean) {
     if (onOpenChangeProp) onOpenChangeProp(next);
@@ -112,6 +117,33 @@ export function WorkflowDialog({
       setErrors(["Couldn't reach the server."]);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!workflow) return;
+    if (
+      !window.confirm(
+        `Delete workflow "${workflow.name}"? This removes all of its steps and logged progress. This can't be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    setErrors([]);
+    try {
+      const res = await fetch(`/api/lab-workflows/${workflow.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErrors(data.errors ?? ["Couldn't delete the workflow."]);
+        return;
+      }
+      setOpen(false);
+      onDeleted?.();
+    } catch {
+      setErrors(["Couldn't reach the server."]);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -171,8 +203,18 @@ export function WorkflowDialog({
             <StepBuilder steps={steps} onChange={setSteps} />
           )}
 
-          <DialogFooter>
-            <Button type="submit" disabled={submitting}>
+          <DialogFooter className={isEdit ? "sm:justify-between" : undefined}>
+            {isEdit && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={submitting || deleting}
+              >
+                {deleting ? "Deleting..." : "Delete workflow"}
+              </Button>
+            )}
+            <Button type="submit" disabled={submitting || deleting}>
               {submitting
                 ? isEdit
                   ? "Saving..."
