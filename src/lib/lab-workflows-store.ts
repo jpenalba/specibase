@@ -191,13 +191,36 @@ export async function listEnrolledSamples(workflowId: string): Promise<WorkflowS
   return (data ?? []) as WorkflowSampleLink[];
 }
 
+// A sample enrolled in a workflow for the first time starts with every
+// step already ticked "done" — the lab unticks (clicks back to "not
+// started") whichever steps don't apply to it, rather than starting from
+// a blank grid and ticking everything on by hand. A sample that's already
+// enrolled (shouldn't normally be re-submitted here, but just in case)
+// is left alone rather than having its progress reset.
 export async function enrollSamples(workflowId: string, sampleIds: string[]): Promise<void> {
   if (sampleIds.length === 0) return;
-  const rows = sampleIds.map((sampleId) => ({ workflow_id: workflowId, sample_id: sampleId }));
-  const { error } = await getSupabase()
+  const supabase = getSupabase();
+
+  const alreadyEnrolled = new Set(
+    (await listEnrolledSamples(workflowId)).map((link) => link.sample_id)
+  );
+  const newSampleIds = sampleIds.filter((id) => !alreadyEnrolled.has(id));
+  if (newSampleIds.length === 0) return;
+
+  const rows = newSampleIds.map((sampleId) => ({ workflow_id: workflowId, sample_id: sampleId }));
+  const { error } = await supabase
     .from(SAMPLES_TABLE)
     .upsert(rows, { onConflict: "workflow_id,sample_id", ignoreDuplicates: true });
   if (error) throw new Error(error.message);
+
+  const steps = await listSteps(workflowId);
+  if (steps.length > 0) {
+    await upsertEntries(
+      newSampleIds.flatMap((sampleId) =>
+        steps.map((step) => ({ step_id: step.id, sample_id: sampleId, status: "done" as const }))
+      )
+    );
+  }
 }
 
 // Also clears any entries already logged for these samples on this
