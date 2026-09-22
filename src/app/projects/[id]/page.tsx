@@ -6,5 +6,5 @@ export default async function ProjectHomePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  redirect(`/projects/${id}/background`);
+  redirect(`/projects/${id}/info`);
 }

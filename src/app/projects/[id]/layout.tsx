@@ -10,17 +10,16 @@ import { ProjectStatusBadge } from "@/components/projects/project-status-badge";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { slug: "background", label: "Background" },
+  { slug: "info", label: "Info" },
   { slug: "samples", label: "Samples" },
   { slug: "lab-workflow", label: "Lab workflow" },
   { slug: "bioinformatics", label: "Bioinformatic workflow" },
-  { slug: "notes", label: "Notes" },
 ];
 
-// The project's home shell: shared across every tab (Background, Samples,
-// Lab workflow, Bioinformatic workflow, Notes), each its own route under
-// here — so a tab is bookmarkable/shareable and the project's identity
-// (icon, name, status, description) only needs fetching and rendering once.
+// The project's home shell: shared across every tab (Info, Samples, Lab
+// workflow, Bioinformatic workflow), each its own route under here — so a
+// tab is bookmarkable/shareable and the project's identity (icon, name,
+// status, description) only needs fetching and rendering once.
 export default function ProjectLayout({ children }: { children: React.ReactNode }) {
   const { id: projectId } = useParams<{ id: string }>();
   const pathname = usePathname();

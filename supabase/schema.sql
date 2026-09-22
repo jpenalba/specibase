@@ -52,9 +52,10 @@ create table if not exists projects (
   -- src/lib/focal-group.ts); null means auto-match against focal_group.
   logo text,
   status text not null default 'in_progress' check (status in ('in_progress', 'completed')),
-  -- Free-form markdown for the project's Background tab; null means
-  -- nothing's been written yet.
-  background text
+  -- Free-form markdown shown in the project's Info tab; null means
+  -- nothing's been written yet for that section.
+  background text,
+  notes text
 );
 
 create table if not exists sample_projects (

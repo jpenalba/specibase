@@ -24,6 +24,7 @@ export type ParsedProjectFields = {
   logo?: FocalGroupCategory | null;
   status?: ProjectStatus;
   background?: string;
+  notes?: string;
 };
 
 // Shared between POST (create) and PATCH (update) — pulls the project
@@ -62,5 +63,6 @@ export function parseProjectFields(
     logo,
     status,
     background: stringField(body, "background"),
+    notes: stringField(body, "notes"),
   };
 }
