@@ -46,6 +46,22 @@ export function ManageSamplesDialog({
     [allSamples, enrolledIds]
   );
 
+  // Defaults to "every addable sample selected" — the lab deselects the
+  // ones it doesn't want, rather than hand-picking from a blank slate.
+  // Resets whenever the dialog opens, and again whenever the addable set
+  // changes while it's open (e.g. right after a batch is added, so the
+  // next round starts fresh too) — tracked by comparing enrolledIds'
+  // identity against the last one seen, set during render rather than in
+  // an effect, per React's "adjusting state when a prop changes" pattern.
+  const [selectionSignal, setSelectionSignal] = useState<Set<string> | null>(null);
+  const currentSignal = open ? enrolledIds : null;
+  if (currentSignal !== selectionSignal) {
+    setSelectionSignal(currentSignal);
+    if (currentSignal) {
+      setAddSelection(new Set(allSamples.filter((s) => !currentSignal.has(s.id)).map((s) => s.id)));
+    }
+  }
+
   async function handleRemove(sampleId: string) {
     setBusy(true);
     setError(null);
