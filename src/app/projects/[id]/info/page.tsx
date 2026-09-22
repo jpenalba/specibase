@@ -6,6 +6,7 @@ import { Project } from "@/lib/projects-store";
 import { parseCollaborators } from "@/lib/collaborators";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import { MarkdownField } from "@/components/projects/markdown-field";
+import { ReferencesSection } from "@/components/projects/references-section";
 
 function DetailField({ label, value }: { label: string; value: string | null }) {
   if (!value) return null;
@@ -128,9 +129,7 @@ export default function ProjectInfoPage() {
 
       <section>
         <SectionHeading>References</SectionHeading>
-        <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          References — coming soon.
-        </div>
+        <ReferencesSection projectId={projectId} />
       </section>
     </div>
   );

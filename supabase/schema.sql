@@ -174,6 +174,21 @@ create index if not exists lab_workflow_steps_workflow_id_idx on lab_workflow_st
 create index if not exists lab_workflow_samples_sample_id_idx on lab_workflow_samples (sample_id);
 create index if not exists lab_workflow_entries_sample_id_idx on lab_workflow_entries (sample_id);
 
+-- References section of a project's Info tab. See
+-- supabase/migrations/0010_project_references.sql for the per-column notes.
+create table if not exists project_references (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  citation text not null,
+  sort_key text not null,
+  doi text,
+  source jsonb
+);
+
+create index if not exists project_references_project_id_idx on project_references (project_id);
+
 -- No client code ever talks to Supabase directly (the app's own API routes
 -- do, using the service role key, which bypasses RLS) — this just makes
 -- sure that stays true if an anon-key client ever gets added by mistake.
@@ -187,6 +202,7 @@ alter table lab_workflows enable row level security;
 alter table lab_workflow_steps enable row level security;
 alter table lab_workflow_samples enable row level security;
 alter table lab_workflow_entries enable row level security;
+alter table project_references enable row level security;
 
 -- Public bucket for images inserted into a project's Background markdown
 -- (see src/app/api/projects/[id]/background/images) — public because the
