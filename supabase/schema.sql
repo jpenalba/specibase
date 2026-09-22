@@ -120,6 +120,56 @@ create table if not exists gbif_species_layers (
   style text not null default 'classic.point'
 );
 
+-- Lab Workflow: a project can have any number of customizable workflows,
+-- each a sequence of steps tracked per enrolled sample. See
+-- supabase/migrations/0007_lab_workflows.sql for the per-table notes.
+create table if not exists lab_workflows (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  name text not null,
+  status text not null default 'in_progress' check (status in ('in_progress', 'completed'))
+);
+
+create table if not exists lab_workflow_steps (
+  id uuid primary key default gen_random_uuid(),
+  workflow_id uuid not null references lab_workflows (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  position integer not null,
+  step_key text not null,
+  label text not null
+);
+
+create table if not exists lab_workflow_samples (
+  workflow_id uuid not null references lab_workflows (id) on delete cascade,
+  sample_id uuid not null references samples (id) on delete cascade,
+  added_at timestamptz not null default now(),
+  primary key (workflow_id, sample_id)
+);
+
+create table if not exists lab_workflow_entries (
+  id uuid primary key default gen_random_uuid(),
+  step_id uuid not null references lab_workflow_steps (id) on delete cascade,
+  sample_id uuid not null references samples (id) on delete cascade,
+  updated_at timestamptz not null default now(),
+
+  status text not null default 'not_started'
+    check (status in ('not_started', 'in_progress', 'done', 'failed')),
+  method text,
+  date date,
+  performed_by text,
+  quantification jsonb,
+  notes text,
+
+  unique (step_id, sample_id)
+);
+
+create index if not exists lab_workflow_steps_workflow_id_idx on lab_workflow_steps (workflow_id);
+create index if not exists lab_workflow_samples_sample_id_idx on lab_workflow_samples (sample_id);
+create index if not exists lab_workflow_entries_sample_id_idx on lab_workflow_entries (sample_id);
+
 -- No client code ever talks to Supabase directly (the app's own API routes
 -- do, using the service role key, which bypasses RLS) — this just makes
 -- sure that stays true if an anon-key client ever gets added by mistake.
@@ -129,3 +179,7 @@ alter table sample_projects enable row level security;
 alter table collections enable row level security;
 alter table collection_samples enable row level security;
 alter table gbif_species_layers enable row level security;
+alter table lab_workflows enable row level security;
+alter table lab_workflow_steps enable row level security;
+alter table lab_workflow_samples enable row level security;
+alter table lab_workflow_entries enable row level security;
