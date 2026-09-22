@@ -5,7 +5,7 @@ import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds } fr
 import { SampleRecord } from "@/lib/samples-store";
 import { MapLayer, ALL_LAYER_ID } from "@/lib/layers";
 import { GbifSpeciesLayer } from "@/lib/gbif-store";
-import { gbifTileUrl } from "@/lib/gbif";
+import { gbifTileUrl, GBIF_TILE_SIZE } from "@/lib/gbif";
 import { LayerShape, shapePolygonPoints } from "@/lib/layer-shapes";
 import { FieldDef } from "@/lib/fields";
 import { formatToDDMMYYYY } from "@/lib/dates";
@@ -489,7 +489,7 @@ export function SampleMap({
           map.addSource(layerId, {
             type: "raster",
             tiles: [gbifTileUrl(species.taxon_key, species.style)],
-            tileSize: 256,
+            tileSize: GBIF_TILE_SIZE,
             attribution: "GBIF.org",
           });
           map.addLayer({ id: layerId, type: "raster", source: layerId });

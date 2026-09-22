@@ -8,6 +8,15 @@
 // this could be verified against a live response while building — it's
 // written against GBIF's documented API shape. Worth a smoke test once
 // deployed somewhere with normal internet access.
+// Must match the "@Nx" multiplier used in gbifTileUrl() below — a normal
+// (non-retina) raster tile is 256px, so requesting @2x content (512px of
+// actual image per tile) but still declaring a 256 tileSize would just
+// downsample it back to the same on-screen size as @1x, sharper but no
+// bigger. Declaring the matching larger tileSize instead makes MapLibre
+// render that tile's content — GBIF's points included — at its true,
+// larger size on screen.
+export const GBIF_TILE_SIZE = 512;
+
 export type GbifStyleId = "classic.point" | "purpleYellow.point" | "orange.marker" | "blue.marker";
 
 export const GBIF_STYLES: { id: GbifStyleId; label: string }[] = [
@@ -25,8 +34,17 @@ export function isGbifStyle(value: string): value is GbifStyleId {
 
 // {z}/{x}/{y} are MapLibre's own raster-source placeholders — everything
 // else here is a literal, fixed query string per species/style.
+//
+// Requests GBIF's "@2x" (retina) tile variant rather than "@1x" — GBIF
+// renders the points/markers themselves proportionally larger in it, not
+// just a sharper image, so pairing it with GBIF_TILE_SIZE (see the map
+// component) as the raster source's declared tileSize makes the whole
+// layer noticeably more visible instead of the barely-there dots @1x
+// produces. Bump to @4x (and GBIF_TILE_SIZE to 1024) for larger still, if
+// @2x still isn't enough once this can actually be checked against a real
+// GBIF response — see this file's other network-access caveat.
 export function gbifTileUrl(taxonKey: number, style: string): string {
-  return `https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&taxonKey=${taxonKey}&style=${encodeURIComponent(style)}`;
+  return `https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@2x.png?srs=EPSG:3857&taxonKey=${taxonKey}&style=${encodeURIComponent(style)}`;
 }
 
 export type GbifSpeciesSuggestion = {
