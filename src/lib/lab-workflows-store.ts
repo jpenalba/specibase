@@ -5,6 +5,8 @@ const WORKFLOWS_TABLE = "lab_workflows";
 const STEPS_TABLE = "lab_workflow_steps";
 const SAMPLES_TABLE = "lab_workflow_samples";
 const ENTRIES_TABLE = "lab_workflow_entries";
+const CUSTOM_COLUMNS_TABLE = "lab_workflow_custom_columns";
+const CUSTOM_VALUES_TABLE = "lab_workflow_custom_values";
 
 export type WorkflowStatus = "in_progress" | "completed";
 
@@ -276,4 +278,104 @@ export async function upsertEntries(rows: EntryUpsertInput[]): Promise<LabWorkfl
     .select();
   if (error) throw new Error(error.message);
   return (data ?? []) as LabWorkflowEntry[];
+}
+
+export type LabWorkflowCustomColumn = {
+  id: string;
+  workflow_id: string;
+  created_at: string;
+  position: number;
+  label: string;
+};
+
+export type LabWorkflowCustomValue = {
+  id: string;
+  column_id: string;
+  sample_id: string;
+  updated_at: string;
+  value: string | null;
+};
+
+export async function listCustomColumns(workflowId: string): Promise<LabWorkflowCustomColumn[]> {
+  const { data, error } = await getSupabase()
+    .from(CUSTOM_COLUMNS_TABLE)
+    .select("*")
+    .eq("workflow_id", workflowId)
+    .order("position", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LabWorkflowCustomColumn[];
+}
+
+// Appended after whatever's already there, same as appendSteps — for
+// things like an extraction or library name that don't fit the tick-box
+// status model the preset/custom steps use.
+export async function addCustomColumn(
+  workflowId: string,
+  label: string
+): Promise<LabWorkflowCustomColumn> {
+  const existing = await listCustomColumns(workflowId);
+  const { data, error } = await getSupabase()
+    .from(CUSTOM_COLUMNS_TABLE)
+    .insert({ workflow_id: workflowId, label: label.trim(), position: existing.length })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as LabWorkflowCustomColumn;
+}
+
+export async function renameCustomColumn(
+  id: string,
+  label: string
+): Promise<LabWorkflowCustomColumn> {
+  const { data, error } = await getSupabase()
+    .from(CUSTOM_COLUMNS_TABLE)
+    .update({ label: label.trim() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as LabWorkflowCustomColumn;
+}
+
+// Cascades to that column's values across every sample.
+export async function deleteCustomColumn(id: string): Promise<void> {
+  const { error } = await getSupabase().from(CUSTOM_COLUMNS_TABLE).delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// Every custom value across every custom column of this workflow — same
+// "fetch the whole workflow's worth at once" approach as
+// listEntriesForWorkflow.
+export async function listCustomValuesForWorkflow(
+  workflowId: string
+): Promise<LabWorkflowCustomValue[]> {
+  const columns = await listCustomColumns(workflowId);
+  if (columns.length === 0) return [];
+  const { data, error } = await getSupabase()
+    .from(CUSTOM_VALUES_TABLE)
+    .select("*")
+    .in(
+      "column_id",
+      columns.map((c) => c.id)
+    );
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LabWorkflowCustomValue[];
+}
+
+export type CustomValueUpsertInput = { column_id: string; sample_id: string; value: string | null };
+
+export async function upsertCustomValues(
+  rows: CustomValueUpsertInput[]
+): Promise<LabWorkflowCustomValue[]> {
+  if (rows.length === 0) return [];
+  const now = new Date().toISOString();
+  const { data, error } = await getSupabase()
+    .from(CUSTOM_VALUES_TABLE)
+    .upsert(
+      rows.map((row) => ({ ...row, updated_at: now })),
+      { onConflict: "column_id,sample_id" }
+    )
+    .select();
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LabWorkflowCustomValue[];
 }

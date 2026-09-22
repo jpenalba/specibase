@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LabWorkflowEntry, LabWorkflowStep } from "@/lib/lab-workflows-store";
+import {
+  LabWorkflowCustomColumn,
+  LabWorkflowCustomValue,
+  LabWorkflowEntry,
+  LabWorkflowStep,
+} from "@/lib/lab-workflows-store";
 import { SampleRecord } from "@/lib/samples-store";
 import { EntryStatus, nextStatus, STATUS_DOT_CLASS, STATUS_LABELS } from "@/lib/lab-workflow-status";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 type PaintedCell = { step_id: string; sample_id: string; status: EntryStatus };
@@ -24,18 +30,61 @@ export function SimpleGrid({
   steps,
   samples,
   entries,
+  customColumns,
+  customValues,
   onCommit,
+  onSaveCustomValue,
 }: {
   steps: LabWorkflowStep[];
   samples: SampleRecord[];
   entries: LabWorkflowEntry[];
+  // Free-text columns (extraction/library name, etc.) rendered between
+  // Species and the step columns — a different shape than steps, so
+  // tracked entirely separately rather than shoehorned into `entries`.
+  customColumns: LabWorkflowCustomColumn[];
+  customValues: LabWorkflowCustomValue[];
   onCommit: (cells: PaintedCell[]) => void;
+  onSaveCustomValue: (columnId: string, sampleId: string, value: string) => void;
 }) {
   const baseStatus = useMemo(() => {
     const map = new Map<string, EntryStatus>();
     for (const entry of entries) map.set(cellKey(entry.step_id, entry.sample_id), entry.status);
     return map;
   }, [entries]);
+
+  const baseCustomValue = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const v of customValues) map.set(cellKey(v.column_id, v.sample_id), v.value ?? "");
+    return map;
+  }, [customValues]);
+
+  // Same "local override, cleared once the parent's own state reflects the
+  // save" approach as the status dots' drag-paint overrides below — the
+  // parent updates its custom-values state synchronously in
+  // onSaveCustomValue, so clearing the override immediately on blur never
+  // causes a visible flicker back to the old value.
+  const [customOverrides, setCustomOverrides] = useState<Map<string, string>>(new Map());
+
+  function customValueFor(columnId: string, sampleId: string): string {
+    const key = cellKey(columnId, sampleId);
+    return customOverrides.get(key) ?? baseCustomValue.get(key) ?? "";
+  }
+
+  function handleCustomChange(columnId: string, sampleId: string, value: string) {
+    setCustomOverrides((prev) => new Map(prev).set(cellKey(columnId, sampleId), value));
+  }
+
+  function handleCustomBlur(columnId: string, sampleId: string) {
+    const key = cellKey(columnId, sampleId);
+    const value = customOverrides.get(key);
+    if (value === undefined) return;
+    onSaveCustomValue(columnId, sampleId, value);
+    setCustomOverrides((prev) => {
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
+  }
 
   // Cells touched by the drag currently in progress, painted immediately
   // for feedback and cleared as soon as the parent's `entries` reflects
@@ -92,11 +141,16 @@ export function SimpleGrid({
 
   return (
     <div className="select-none overflow-x-auto rounded-lg border border-border">
-      <Table>
+      <Table className="w-auto">
         <TableHeader>
           <TableRow>
             <TableHead className="sticky left-0 z-10 h-8 bg-card align-bottom">Sample ID</TableHead>
             <TableHead className="h-8 align-bottom">Species</TableHead>
+            {customColumns.map((column) => (
+              <TableHead key={column.id} className="h-8 min-w-32 align-bottom">
+                {column.label}
+              </TableHead>
+            ))}
             {steps.map((step) => (
               <TableHead key={step.id} className="relative h-28 w-10 min-w-10 p-0 align-bottom">
                 <span className="absolute bottom-2 left-1/2 origin-bottom-left -rotate-45 whitespace-nowrap text-xs font-medium">
@@ -118,6 +172,16 @@ export function SimpleGrid({
                 {sample.primary_identifier}
               </TableCell>
               <TableCell className="py-1 text-muted-foreground">{sample.species}</TableCell>
+              {customColumns.map((column) => (
+                <TableCell key={column.id} className="py-1">
+                  <Input
+                    className="h-7 min-w-28"
+                    value={customValueFor(column.id, sample.id)}
+                    onChange={(e) => handleCustomChange(column.id, sample.id, e.target.value)}
+                    onBlur={() => handleCustomBlur(column.id, sample.id)}
+                  />
+                </TableCell>
+              ))}
               {steps.map((step) => {
                 const status = statusFor(step.id, sample.id);
                 return (

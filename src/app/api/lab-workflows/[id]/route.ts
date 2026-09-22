@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   deleteWorkflow,
   getWorkflow,
+  listCustomColumns,
+  listCustomValuesForWorkflow,
   listEnrolledSamples,
   listEntriesForWorkflow,
   listSteps,
@@ -22,16 +24,20 @@ export async function GET(
     if (!workflow) {
       return NextResponse.json({ errors: ["Workflow not found"] }, { status: 404 });
     }
-    const [steps, links, entries] = await Promise.all([
+    const [steps, links, entries, customColumns, customValues] = await Promise.all([
       listSteps(id),
       listEnrolledSamples(id),
       listEntriesForWorkflow(id),
+      listCustomColumns(id),
+      listCustomValuesForWorkflow(id),
     ]);
     return NextResponse.json({
       workflow,
       steps,
       sampleIds: links.map((l) => l.sample_id),
       entries,
+      customColumns,
+      customValues,
     });
   } catch (error) {
     return apiError(error);

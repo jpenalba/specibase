@@ -2,13 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
-import { LabWorkflow, LabWorkflowEntry, LabWorkflowStep } from "@/lib/lab-workflows-store";
+import {
+  LabWorkflow,
+  LabWorkflowCustomColumn,
+  LabWorkflowCustomValue,
+  LabWorkflowEntry,
+  LabWorkflowStep,
+} from "@/lib/lab-workflows-store";
 import { SampleRecord } from "@/lib/samples-store";
 import { EntryStatus } from "@/lib/lab-workflow-status";
 import { WorkflowStatusBadge } from "./workflow-status-badge";
 import { WorkflowDialog } from "./workflow-dialog";
 import { ManageSamplesDialog } from "./manage-samples-dialog";
 import { StepManagerDialog } from "./step-manager-dialog";
+import { ManageColumnsDialog } from "./manage-columns-dialog";
 import { SimpleGrid } from "./simple-grid";
 import { DetailedView, DetailedEntryPatch } from "./detailed-view";
 import { Button } from "@/components/ui/button";
@@ -65,6 +72,8 @@ export function WorkflowSection({
   const [steps, setSteps] = useState<LabWorkflowStep[]>([]);
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set());
   const [entries, setEntries] = useState<LabWorkflowEntry[]>([]);
+  const [customColumns, setCustomColumns] = useState<LabWorkflowCustomColumn[]>([]);
+  const [customValues, setCustomValues] = useState<LabWorkflowCustomValue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("simple");
@@ -84,6 +93,8 @@ export function WorkflowSection({
         setSteps(detail.steps ?? []);
         setEnrolledIds(new Set(detail.sampleIds ?? []));
         setEntries(detail.entries ?? []);
+        setCustomColumns(detail.customColumns ?? []);
+        setCustomValues(detail.customValues ?? []);
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
@@ -142,6 +153,32 @@ export function WorkflowSection({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ entries: [{ step_id: stepId, sample_id: sampleId, ...patch }] }),
+    }).catch(() => setError("Couldn't save that change — try again."));
+  }
+
+  function handleSaveCustomValue(columnId: string, sampleId: string, value: string) {
+    setCustomValues((prev) => {
+      const index = prev.findIndex((v) => v.column_id === columnId && v.sample_id === sampleId);
+      if (index === -1) {
+        return [
+          ...prev,
+          {
+            id: `pending-${columnId}-${sampleId}`,
+            column_id: columnId,
+            sample_id: sampleId,
+            updated_at: new Date().toISOString(),
+            value,
+          },
+        ];
+      }
+      const next = prev.slice();
+      next[index] = { ...next[index], value };
+      return next;
+    });
+    fetch(`/api/lab-workflows/${workflowId}/custom-values`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [{ column_id: columnId, sample_id: sampleId, value }] }),
     }).catch(() => setError("Couldn't save that change — try again."));
   }
 
@@ -204,6 +241,12 @@ export function WorkflowSection({
             onSaved={load}
             trigger={<Button variant="outline" size="sm">Edit steps</Button>}
           />
+          <ManageColumnsDialog
+            workflowId={workflowId}
+            columns={customColumns}
+            onSaved={load}
+            trigger={<Button variant="outline" size="sm">Manage columns</Button>}
+          />
         </div>
       </div>
 
@@ -228,7 +271,10 @@ export function WorkflowSection({
           steps={steps}
           samples={pageSamples}
           entries={entries}
+          customColumns={customColumns}
+          customValues={customValues}
           onCommit={handleGridCommit}
+          onSaveCustomValue={handleSaveCustomValue}
         />
       ) : (
         <DetailedView
