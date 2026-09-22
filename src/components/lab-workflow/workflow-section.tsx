@@ -1,21 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { LabWorkflow, LabWorkflowEntry, LabWorkflowStep } from "@/lib/lab-workflows-store";
 import { SampleRecord } from "@/lib/samples-store";
 import { EntryStatus } from "@/lib/lab-workflow-status";
-import { WorkflowStatusBadge } from "@/components/lab-workflow/workflow-status-badge";
-import { ManageSamplesDialog } from "@/components/lab-workflow/manage-samples-dialog";
-import { StepManagerDialog } from "@/components/lab-workflow/step-manager-dialog";
-import { SimpleGrid } from "@/components/lab-workflow/simple-grid";
-import { DetailedView, DetailedEntryPatch } from "@/components/lab-workflow/detailed-view";
+import { WorkflowStatusBadge } from "./workflow-status-badge";
+import { WorkflowDialog } from "./workflow-dialog";
+import { ManageSamplesDialog } from "./manage-samples-dialog";
+import { StepManagerDialog } from "./step-manager-dialog";
+import { SimpleGrid } from "./simple-grid";
+import { DetailedView, DetailedEntryPatch } from "./detailed-view";
 import { Button } from "@/components/ui/button";
 import { cn, compareIdentifiers } from "@/lib/utils";
 
 type ViewMode = "simple" | "detailed";
+const PAGE_SIZES = [20, 50, 100] as const;
 
 function mergeEntry(
   entries: LabWorkflowEntry[],
@@ -45,24 +45,32 @@ function mergeEntry(
   return next;
 }
 
-export default function WorkflowGridPage() {
-  const { id: projectId, workflowId } = useParams<{ id: string; workflowId: string }>();
-
+// One workflow's full grid, as its own self-contained section — the Lab
+// workflow tab renders one of these per workflow, stacked, rather than
+// each workflow living on its own page.
+export function WorkflowSection({
+  projectId,
+  workflowId,
+  allSamples,
+}: {
+  projectId: string;
+  workflowId: string;
+  allSamples: SampleRecord[];
+}) {
   const [workflow, setWorkflow] = useState<LabWorkflow | null>(null);
   const [steps, setSteps] = useState<LabWorkflowStep[]>([]);
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set());
   const [entries, setEntries] = useState<LabWorkflowEntry[]>([]);
-  const [allSamples, setAllSamples] = useState<SampleRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("simple");
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  const [page, setPage] = useState(0);
 
   const load = useCallback(() => {
-    Promise.all([
-      fetch(`/api/lab-workflows/${workflowId}`).then((res) => res.json()),
-      fetch("/api/samples").then((res) => res.json()),
-    ])
-      .then(([detail, samplesData]) => {
+    fetch(`/api/lab-workflows/${workflowId}`)
+      .then((res) => res.json())
+      .then((detail) => {
         if (detail.errors?.length > 0) {
           setError(detail.errors.join(" "));
           return;
@@ -72,7 +80,6 @@ export default function WorkflowGridPage() {
         setSteps(detail.steps ?? []);
         setEnrolledIds(new Set(detail.sampleIds ?? []));
         setEntries(detail.entries ?? []);
-        setAllSamples(samplesData.samples ?? []);
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
@@ -89,6 +96,18 @@ export default function WorkflowGridPage() {
         .sort((a, b) => compareIdentifiers(a.primary_identifier, b.primary_identifier)),
     [allSamples, enrolledIds]
   );
+
+  // Applies to both the Simple grid and the Detailed view below — a
+  // workflow with many enrolled samples shouldn't render them all at
+  // once, and toggling between the two views keeps the same page.
+  const totalPages = Math.max(1, Math.ceil(enrolledSamples.length / pageSize));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pageSamples = enrolledSamples.slice(
+    currentPage * pageSize,
+    currentPage * pageSize + pageSize
+  );
+  const rangeStart = enrolledSamples.length === 0 ? 0 : currentPage * pageSize + 1;
+  const rangeEnd = Math.min(enrolledSamples.length, currentPage * pageSize + pageSize);
 
   const entryCountByStepId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -123,39 +142,42 @@ export default function WorkflowGridPage() {
   }
 
   if (loading) {
-    return <p className="mx-auto max-w-6xl text-sm text-muted-foreground">Loading...</p>;
+    return (
+      <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
+        Loading...
+      </div>
+    );
   }
 
   if (error || !workflow) {
     return (
-      <div className="mx-auto max-w-6xl">
-        <Link
-          href={`/projects/${projectId}/lab-workflow`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
-        >
-          <ArrowLeft className="size-4" /> Back to workflows
-        </Link>
-        <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {error ?? "Workflow not found."}
-        </div>
+      <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+        {error ?? "Workflow not found."}
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[100rem] flex-col gap-6">
-      <Link
-        href={`/projects/${projectId}/lab-workflow`}
-        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:underline"
-      >
-        <ArrowLeft className="size-4" /> Back to workflows
-      </Link>
-
+    <div className="grid gap-4 rounded-lg border border-border p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold">{workflow.name}</h1>
+            <h2 className="text-xl font-semibold">{workflow.name}</h2>
             <WorkflowStatusBadge status={workflow.status} />
+            <WorkflowDialog
+              projectId={projectId}
+              workflow={workflow}
+              onSaved={load}
+              trigger={
+                <button
+                  type="button"
+                  className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  aria-label={`Edit ${workflow.name}`}
+                >
+                  <Pencil className="size-4" />
+                </button>
+              }
+            />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {enrolledSamples.length} sample{enrolledSamples.length === 1 ? "" : "s"} ·{" "}
@@ -168,23 +190,17 @@ export default function WorkflowGridPage() {
             allSamples={allSamples}
             enrolledIds={enrolledIds}
             onSaved={load}
-            trigger={<Button variant="outline">Manage samples</Button>}
+            trigger={<Button variant="outline" size="sm">Manage samples</Button>}
           />
           <StepManagerDialog
             workflowId={workflowId}
             steps={steps}
             entryCountByStepId={entryCountByStepId}
             onSaved={load}
-            trigger={<Button variant="outline">Edit steps</Button>}
+            trigger={<Button variant="outline" size="sm">Edit steps</Button>}
           />
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
 
       <div className="flex w-fit overflow-hidden rounded-md border border-input">
         {(["simple", "detailed"] as ViewMode[]).map((mode) => (
@@ -205,18 +221,61 @@ export default function WorkflowGridPage() {
       {view === "simple" ? (
         <SimpleGrid
           steps={steps}
-          samples={enrolledSamples}
+          samples={pageSamples}
           entries={entries}
           onCommit={handleGridCommit}
         />
       ) : (
         <DetailedView
           steps={steps}
-          samples={enrolledSamples}
+          samples={pageSamples}
           entries={entries}
           onSaveEntry={handleDetailedSave}
         />
       )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <span>Rows per page</span>
+          <select
+            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(0);
+            }}
+          >
+            {PAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <span>
+            {enrolledSamples.length === 0 ? "0 of 0" : `${rangeStart}–${rangeEnd} of ${enrolledSamples.length}`}
+          </span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              className="rounded-md border border-input px-3 py-1 hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1}
+              className="rounded-md border border-input px-3 py-1 hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
