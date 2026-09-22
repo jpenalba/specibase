@@ -23,6 +23,7 @@ export type ParsedProjectFields = {
   focal_region?: string;
   logo?: FocalGroupCategory | null;
   status?: ProjectStatus;
+  background?: string;
 };
 
 // Shared between POST (create) and PATCH (update) — pulls the project
@@ -60,5 +61,6 @@ export function parseProjectFields(
     focal_region: stringField(body, "focal_region"),
     logo,
     status,
+    background: stringField(body, "background"),
   };
 }

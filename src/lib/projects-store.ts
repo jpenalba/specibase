@@ -22,6 +22,10 @@ export type Project = {
   logo: FocalGroupCategory | null;
   focal_region: string | null;
   status: ProjectStatus;
+  // Free-form markdown for the Background tab — null means nothing's
+  // been written yet, which the tab shows as an "Add background" button
+  // rather than empty rendered markdown.
+  background: string | null;
 };
 
 export type NewProjectInput = {
@@ -34,6 +38,7 @@ export type NewProjectInput = {
   focal_region?: string;
   logo?: FocalGroupCategory | null;
   status?: ProjectStatus;
+  background?: string;
 };
 
 export type UpdateProjectInput = Partial<NewProjectInput>;
@@ -61,6 +66,7 @@ export async function createProject(input: NewProjectInput): Promise<Project> {
       focal_region: input.focal_region?.trim() || null,
       logo: input.logo || null,
       status: input.status ?? "in_progress",
+      background: input.background?.trim() || null,
     })
     .select()
     .single();
@@ -87,6 +93,7 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
   if (input.focal_region !== undefined) patch.focal_region = input.focal_region.trim() || null;
   if (input.logo !== undefined) patch.logo = input.logo || null;
   if (input.status !== undefined) patch.status = input.status;
+  if (input.background !== undefined) patch.background = input.background.trim() || null;
 
   const { data, error } = await getSupabase()
     .from(PROJECTS_TABLE)

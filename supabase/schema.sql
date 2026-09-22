@@ -51,7 +51,10 @@ create table if not exists projects (
   -- An explicit icon choice (one of the categories in
   -- src/lib/focal-group.ts); null means auto-match against focal_group.
   logo text,
-  status text not null default 'in_progress' check (status in ('in_progress', 'completed'))
+  status text not null default 'in_progress' check (status in ('in_progress', 'completed')),
+  -- Free-form markdown for the project's Background tab; null means
+  -- nothing's been written yet.
+  background text
 );
 
 create table if not exists sample_projects (
@@ -183,3 +186,10 @@ alter table lab_workflows enable row level security;
 alter table lab_workflow_steps enable row level security;
 alter table lab_workflow_samples enable row level security;
 alter table lab_workflow_entries enable row level security;
+
+-- Public bucket for images inserted into a project's Background markdown
+-- (see src/app/api/projects/[id]/background/images) — public because the
+-- app has no per-user auth yet, same reasoning as everything else here.
+insert into storage.buckets (id, name, public)
+values ('project-images', 'project-images', true)
+on conflict (id) do nothing;
