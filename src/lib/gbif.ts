@@ -17,34 +17,44 @@
 // larger size on screen.
 export const GBIF_TILE_SIZE = 512;
 
-export type GbifStyleId = "classic.point" | "purpleYellow.point" | "orange.marker" | "blue.marker";
+// Hex-bin aggregation rather than individual points/markers — GBIF groups
+// occurrences into hexagonal cells and colors each by how many fall inside
+// it, so even a sparse or zoomed-out species reads as visible colored
+// cells instead of a scatter of barely-there dots. The tradeoff versus the
+// earlier point/marker styles: this shows density by region rather than
+// individual occurrence locations.
+export type GbifStyleId = "classic.poly" | "purpleYellow.poly" | "green.poly";
 
 export const GBIF_STYLES: { id: GbifStyleId; label: string }[] = [
-  { id: "classic.point", label: "Classic (blue)" },
-  { id: "purpleYellow.point", label: "Purple–yellow" },
-  { id: "orange.marker", label: "Orange markers" },
-  { id: "blue.marker", label: "Blue markers" },
+  { id: "classic.poly", label: "Classic (blue)" },
+  { id: "purpleYellow.poly", label: "Purple–yellow" },
+  { id: "green.poly", label: "Green" },
 ];
 
-export const DEFAULT_GBIF_STYLE: GbifStyleId = "classic.point";
+export const DEFAULT_GBIF_STYLE: GbifStyleId = "classic.poly";
 
 export function isGbifStyle(value: string): value is GbifStyleId {
   return GBIF_STYLES.some((s) => s.id === value);
 }
 
+// Fewer hexagons per tile means each one covers more area and renders
+// bigger — GBIF's own default is tuned for a denser, more granular grid
+// than what a "make it more visible" ask calls for here.
+const HEX_PER_TILE = 20;
+
 // {z}/{x}/{y} are MapLibre's own raster-source placeholders — everything
 // else here is a literal, fixed query string per species/style.
 //
 // Requests GBIF's "@2x" (retina) tile variant rather than "@1x" — GBIF
-// renders the points/markers themselves proportionally larger in it, not
-// just a sharper image, so pairing it with GBIF_TILE_SIZE (see the map
-// component) as the raster source's declared tileSize makes the whole
-// layer noticeably more visible instead of the barely-there dots @1x
-// produces. Bump to @4x (and GBIF_TILE_SIZE to 1024) for larger still, if
-// @2x still isn't enough once this can actually be checked against a real
-// GBIF response — see this file's other network-access caveat.
+// renders its content proportionally larger in it, not just sharper, so
+// pairing it with GBIF_TILE_SIZE (see the map component) as the raster
+// source's declared tileSize makes the whole layer noticeably more visible
+// instead of the barely-there dots @1x produces. Bump to @4x (and
+// GBIF_TILE_SIZE to 1024) for larger still, once this can actually be
+// checked against a real GBIF response — see this file's other
+// network-access caveat.
 export function gbifTileUrl(taxonKey: number, style: string): string {
-  return `https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@2x.png?srs=EPSG:3857&taxonKey=${taxonKey}&style=${encodeURIComponent(style)}`;
+  return `https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@2x.png?srs=EPSG:3857&taxonKey=${taxonKey}&style=${encodeURIComponent(style)}&bin=hex&hexPerTile=${HEX_PER_TILE}`;
 }
 
 export type GbifSpeciesSuggestion = {
