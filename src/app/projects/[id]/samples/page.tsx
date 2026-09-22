@@ -2,19 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { Project, SampleProjectLink } from "@/lib/projects-store";
 import { SampleRecord } from "@/lib/samples-store";
-import { RawRow } from "@/lib/validation";
+import { SampleProjectLink } from "@/lib/projects-store";
+import { MapLayer } from "@/lib/layers";
+import { MAIN_DATABASE_COLOR } from "@/lib/layer-colors";
+import { DEFAULT_LAYER_SHAPE } from "@/lib/layer-shapes";
 import { getVisibleColumns } from "@/lib/fields";
+import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
-import { FocalGroupIcon } from "@/components/projects/focal-group-icon";
-import { ProjectStatusBadge } from "@/components/projects/project-status-badge";
+import { SampleMap } from "@/components/database/sample-map";
+import { SampleTable } from "@/components/samples/sample-table";
+import { FieldPicker } from "@/components/samples/field-picker";
 import { SamplePicker } from "@/components/projects/sample-picker";
-import { AddSampleDialog } from "@/components/samples/add-sample-dialog";
-import { ImportDialog } from "@/components/samples/import-dialog";
-import { StagingTable, StagedSample } from "@/components/samples/staging-table";
+import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,63 +24,51 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 
-function newClientId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random()}`;
-}
-
+// This project's own samples, shown the same way the main Database page
+// shows everything — a map plus a table — just pre-scoped to one implicit
+// "layer" (this project) rather than the root/children layer picker, since
+// there's nothing to switch between here.
 export default function ProjectSamplesPage() {
   const { id: projectId } = useParams<{ id: string }>();
 
-  const { selected: visibleOptionalKeys } = useOptionalFields();
-  const [project, setProject] = useState<Project | null>(null);
   const [samples, setSamples] = useState<SampleRecord[]>([]);
   const [links, setLinks] = useState<SampleProjectLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mapSyncError, setMapSyncError] = useState<string | null>(null);
 
-  const [staged, setStaged] = useState<StagedSample[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(
-    null
-  );
-
+  const [hiddenSampleIds, setHiddenSampleIds] = useState<Set<string>>(new Set());
+  const [highlightedSampleId, setHighlightedSampleId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
   const [addSelection, setAddSelection] = useState<Set<string>>(new Set());
   const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
-  // Reused after every mutation (link, unlink, upload) rather than
-  // patching local state in place — the projects/samples endpoints
-  // already return everything needed for a full, consistent refetch.
+  const { selected, toggle } = useOptionalFields();
+  const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
+
   const load = useCallback(() => {
     Promise.all([
-      fetch("/api/projects").then((res) => res.json()),
       fetch("/api/samples").then((res) => res.json()),
+      fetch("/api/projects").then((res) => res.json()),
     ])
-      .then(([projectsData, samplesData]) => {
+      .then(([samplesData, projectsData]) => {
+        if (samplesData.errors?.length > 0) {
+          setError(samplesData.errors.join(" "));
+          return;
+        }
         if (projectsData.errors?.length > 0) {
           setError(projectsData.errors.join(" "));
           return;
         }
         setError(null);
-        const found =
-          (projectsData.projects ?? []).find((p: Project) => p.id === projectId) ?? null;
-        setProject(found);
-        setLinks(projectsData.links ?? []);
         setSamples(samplesData.samples ?? []);
+        setLinks(projectsData.links ?? []);
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -90,77 +78,60 @@ export default function ProjectSamplesPage() {
     () => new Set(links.filter((l) => l.project_id === projectId).map((l) => l.sample_id)),
     [links, projectId]
   );
-  const linkedSamples = useMemo(
-    () => samples.filter((s) => linkedSampleIds.has(s.id)),
-    [samples, linkedSampleIds]
+
+  const layer: MapLayer = useMemo(
+    () => ({
+      id: projectId,
+      label: "This project",
+      color: MAIN_DATABASE_COLOR,
+      shape: DEFAULT_LAYER_SHAPE,
+      sampleIds: linkedSampleIds,
+    }),
+    [projectId, linkedSampleIds]
   );
+  const visibleLayerIds = useMemo(() => new Set([projectId]), [projectId]);
 
-  const takenIdentifiers = [
-    ...samples.map((s) => s.primary_identifier),
-    ...staged
-      .map((s) => s.row.primary_identifier?.trim())
-      .filter((id): id is string => Boolean(id)),
-  ];
+  const tableSamples = samples.filter((s) => linkedSampleIds.has(s.id));
+  const mappableCount = tableSamples.filter((s) => s.latitude != null && s.longitude != null).length;
 
-  function stageOne(row: RawRow) {
-    setStaged((prev) => [...prev, { clientId: newClientId(), row }]);
-    setMessage(null);
+  function toggleSampleHidden(sampleId: string) {
+    setHiddenSampleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sampleId)) next.delete(sampleId);
+      else next.add(sampleId);
+      return next;
+    });
+    setHighlightedSampleId((current) => (current === sampleId ? null : current));
   }
 
-  function stageMany(rows: RawRow[]) {
-    setStaged((prev) => [...prev, ...rows.map((row) => ({ clientId: newClientId(), row }))]);
-    setMessage(null);
+  function selectSample(sampleId: string) {
+    setHighlightedSampleId((current) => (current === sampleId ? null : sampleId));
   }
 
-  function removeStaged(clientId: string) {
-    setStaged((prev) => prev.filter((s) => s.clientId !== clientId));
+  function handleSampleUpdated(updated: SampleRecord) {
+    setSamples((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
   }
 
-  async function handleUpload() {
-    if (staged.length === 0) return;
-    setUploading(true);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/samples/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: staged.map((s) => s.row), projectId }),
-      });
-      const data = await res.json();
+  function handleSampleDeleted(id: string) {
+    setSamples((prev) => prev.filter((s) => s.id !== id));
+    setHiddenSampleIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setHighlightedSampleId((current) => (current === id ? null : current));
+  }
 
-      if (data.duplicateIds?.length > 0) {
-        setMessage({
-          tone: "error",
-          text: `Upload blocked — Sample ID(s) already in the database: ${data.duplicateIds.join(", ")}. Remove them from staging and try again.`,
-        });
-        return;
-      }
-
-      const insertedIds = new Set(
-        (data.inserted ?? []).map((s: { primary_identifier: string }) => s.primary_identifier)
-      );
-      setStaged((prev) => prev.filter((s) => !insertedIds.has(s.row.primary_identifier?.trim())));
-
-      let text = `Uploaded ${insertedIds.size} sample(s).`;
-      if (data.skipped?.length > 0) {
-        text += ` ${data.skipped.length} row(s) were skipped — they're still staged below.`;
-      }
-      if (data.errors?.length > 0) {
-        text += ` ${data.errors.join(" ")}`;
-      }
-      setMessage({ tone: data.errors?.length > 0 ? "error" : "success", text });
-      load();
-    } catch {
-      setMessage({ tone: "error", text: "Upload failed — check your connection and try again." });
-    } finally {
-      setUploading(false);
-    }
+  function exportCsv() {
+    const csv = samplesToCsv(tableSamples, popupColumns);
+    downloadTextFile("specibase-project-samples.csv", csv, "text/csv;charset=utf-8;");
   }
 
   async function handleLinkSelected() {
     if (addSelection.size === 0) return;
     setLinking(true);
-    setMessage(null);
+    setLinkError(null);
     try {
       const res = await fetch(`/api/projects/${projectId}/samples`, {
         method: "POST",
@@ -171,10 +142,10 @@ export default function ProjectSamplesPage() {
         setAddSelection(new Set());
         load();
       } else {
-        setMessage({ tone: "error", text: "Couldn't link the selected samples." });
+        setLinkError("Couldn't link the selected samples.");
       }
     } catch {
-      setMessage({ tone: "error", text: "Couldn't reach the server." });
+      setLinkError("Couldn't reach the server.");
     } finally {
       setLinking(false);
     }
@@ -187,128 +158,88 @@ export default function ProjectSamplesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sampleIds: [sampleId] }),
       });
-      if (res.ok) {
-        load();
-      } else {
-        setMessage({ tone: "error", text: "Couldn't remove that sample from the project." });
-      }
+      if (res.ok) load();
+      else setLinkError("Couldn't remove that sample from the project.");
     } catch {
-      setMessage({ tone: "error", text: "Couldn't reach the server." });
+      setLinkError("Couldn't reach the server.");
     }
   }
 
-  const columns = getVisibleColumns(visibleOptionalKeys);
-
   if (loading) {
-    return (
-      <div className="mx-auto max-w-6xl p-6 text-sm text-muted-foreground sm:p-10">Loading...</div>
-    );
+    return <p className="mx-auto max-w-6xl text-sm text-muted-foreground">Loading...</p>;
   }
 
-  if (error || !project) {
+  if (error) {
     return (
-      <div className="mx-auto max-w-6xl p-6 sm:p-10">
-        <Link
-          href="/projects"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
-        >
-          <ArrowLeft className="size-4" /> Back to projects
-        </Link>
-        <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {error ?? "Project not found."}
-        </div>
+      <div className="mx-auto max-w-6xl rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+        {error}
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 sm:p-10">
-      <Link
-        href="/projects"
-        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:underline"
-      >
-        <ArrowLeft className="size-4" /> Back to projects
-      </Link>
+    <div className="mx-auto grid w-full max-w-6xl gap-6">
+      {mapSyncError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          The map couldn&apos;t draw the points: {mapSyncError}
+        </div>
+      )}
 
-      <div className="flex items-start gap-3">
-        <FocalGroupIcon focalGroup={project.focal_group} logo={project.logo} size={48} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold">{project.name}</h1>
-            <ProjectStatusBadge status={project.status} />
-          </div>
-          {project.description && (
-            <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
+      <div className="flex h-[55vh] min-h-[420px] overflow-hidden rounded-lg border border-border">
+        <SampleMap
+          samples={samples}
+          layers={[layer]}
+          visibleLayerIds={visibleLayerIds}
+          popupColumns={popupColumns}
+          onSyncError={setMapSyncError}
+          hiddenSampleIds={hiddenSampleIds}
+          highlightedSampleId={highlightedSampleId}
+          gbifLayers={[]}
+          visibleGbifIds={new Set()}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="font-medium">
+            {tableSamples.length} sample{tableSamples.length === 1 ? "" : "s"}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {tableSamples.length > 0 && `${mappableCount} with map coordinates`}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={tableSamples.length === 0}>
+            Export CSV
+          </Button>
+          <FieldPicker selected={selected} onToggle={toggle} />
+          {!editMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditMode(true)}
+              disabled={tableSamples.length === 0}
+            >
+              Edit
+            </Button>
           )}
         </div>
       </div>
 
-      {message && (
-        <div
-          className={
-            message.tone === "success"
-              ? "rounded-md border border-border bg-muted p-3 text-sm"
-              : "rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-          }
-        >
-          {message.text}
-        </div>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Linked samples</CardTitle>
-          <CardDescription>
-            {linkedSamples.length} sample{linkedSamples.length === 1 ? "" : "s"} in this
-            project. Removing one only unlinks it here — it stays in the main database.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {linkedSamples.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-              No samples linked yet. Add some below.
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {columns.map((col) => (
-                      <TableHead key={col.key}>{col.label}</TableHead>
-                    ))}
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {linkedSamples.map((sample) => (
-                    <TableRow key={sample.id}>
-                      {columns.map((col) => (
-                        <TableCell key={col.key}>
-                          {sample[col.key] ? (
-                            String(sample[col.key])
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      ))}
-                      <TableCell>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemove(sample.id)}
-                        >
-                          Remove
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <SampleTable
+        samples={tableSamples}
+        allIdentifiers={samples.map((s) => s.primary_identifier)}
+        visibleOptionalKeys={selected}
+        hiddenSampleIds={hiddenSampleIds}
+        onToggleHidden={toggleSampleHidden}
+        highlightedSampleId={highlightedSampleId}
+        onSelectSample={selectSample}
+        editMode={editMode}
+        onExitEditMode={() => setEditMode(false)}
+        onSampleUpdated={handleSampleUpdated}
+        onSampleDeleted={handleSampleDeleted}
+        extraRowAction={{ label: "Remove from project", onSelect: (s) => handleRemove(s.id) }}
+      />
 
       <Card>
         <CardHeader>
@@ -317,7 +248,8 @@ export default function ProjectSamplesPage() {
             Search for samples already in the database and link them to this project.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="grid gap-3">
+          {linkError && <p className="text-sm text-destructive">{linkError}</p>}
           <SamplePicker
             selectedIds={addSelection}
             onChange={setAddSelection}
@@ -332,31 +264,15 @@ export default function ProjectSamplesPage() {
       </Card>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle>Add new samples</CardTitle>
-            <CardDescription>
-              Stage new samples here, then upload — same as the Add samples page, but linked
-              to this project automatically.
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <ImportDialog takenIdentifiers={takenIdentifiers} onStage={stageMany} />
-            <AddSampleDialog
-              visibleOptionalKeys={visibleOptionalKeys}
-              takenIdentifiers={takenIdentifiers}
-              onStage={stageOne}
-            />
-          </div>
+        <CardHeader>
+          <CardTitle>Add new samples</CardTitle>
+          <CardDescription>
+            Stage new samples here, then upload — linked to this project automatically.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <StagingTable staged={staged} visibleOptionalKeys={visibleOptionalKeys} onRemove={removeStaged} />
+          <AddSamplesPanel fixedProjectId={projectId} onUploaded={load} />
         </CardContent>
-        <CardFooter>
-          <Button onClick={handleUpload} disabled={staged.length === 0 || uploading}>
-            {uploading ? "Uploading..." : `Upload ${staged.length} sample(s) to database`}
-          </Button>
-        </CardFooter>
       </Card>
     </div>
   );

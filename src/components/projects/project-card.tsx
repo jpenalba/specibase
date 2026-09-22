@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Pencil, ListChecks } from "lucide-react";
+import { Pencil, FolderOpen } from "lucide-react";
 import { Project } from "@/lib/projects-store";
 import { parseCollaborators } from "@/lib/collaborators";
 import { formatToDDMMYYYY } from "@/lib/dates";
@@ -87,9 +87,9 @@ export function ProjectCard({
           {sampleIds.length} sample{sampleIds.length === 1 ? "" : "s"}
         </p>
         <Button asChild variant="outline" size="sm">
-          <Link href={`/projects/${project.id}/samples`}>
-            <ListChecks className="size-4" />
-            Sample list
+          <Link href={`/projects/${project.id}`}>
+            <FolderOpen className="size-4" />
+            Open project
           </Link>
         </Button>
       </CardFooter>

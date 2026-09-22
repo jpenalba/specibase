@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { Project } from "@/lib/projects-store";
 import { LabWorkflow, LabWorkflowEntry, LabWorkflowStep } from "@/lib/lab-workflows-store";
 import { SampleRecord } from "@/lib/samples-store";
 import { EntryStatus } from "@/lib/lab-workflow-status";
@@ -47,9 +46,8 @@ function mergeEntry(
 }
 
 export default function WorkflowGridPage() {
-  const { projectId, workflowId } = useParams<{ projectId: string; workflowId: string }>();
+  const { id: projectId, workflowId } = useParams<{ id: string; workflowId: string }>();
 
-  const [project, setProject] = useState<Project | null>(null);
   const [workflow, setWorkflow] = useState<LabWorkflow | null>(null);
   const [steps, setSteps] = useState<LabWorkflowStep[]>([]);
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set());
@@ -61,19 +59,15 @@ export default function WorkflowGridPage() {
 
   const load = useCallback(() => {
     Promise.all([
-      fetch("/api/projects").then((res) => res.json()),
       fetch(`/api/lab-workflows/${workflowId}`).then((res) => res.json()),
       fetch("/api/samples").then((res) => res.json()),
     ])
-      .then(([projectsData, detail, samplesData]) => {
+      .then(([detail, samplesData]) => {
         if (detail.errors?.length > 0) {
           setError(detail.errors.join(" "));
           return;
         }
         setError(null);
-        const foundProject =
-          (projectsData.projects ?? []).find((p: Project) => p.id === projectId) ?? null;
-        setProject(foundProject);
         setWorkflow(detail.workflow);
         setSteps(detail.steps ?? []);
         setEnrolledIds(new Set(detail.sampleIds ?? []));
@@ -82,7 +76,7 @@ export default function WorkflowGridPage() {
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
-  }, [projectId, workflowId]);
+  }, [workflowId]);
 
   useEffect(() => {
     load();
@@ -129,16 +123,14 @@ export default function WorkflowGridPage() {
   }
 
   if (loading) {
-    return (
-      <div className="mx-auto max-w-6xl p-6 text-sm text-muted-foreground sm:p-10">Loading...</div>
-    );
+    return <p className="mx-auto max-w-6xl text-sm text-muted-foreground">Loading...</p>;
   }
 
   if (error || !workflow) {
     return (
-      <div className="mx-auto max-w-6xl p-6 sm:p-10">
+      <div className="mx-auto max-w-6xl">
         <Link
-          href={`/lab-workflow/${projectId}`}
+          href={`/projects/${projectId}/lab-workflow`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
         >
           <ArrowLeft className="size-4" /> Back to workflows
@@ -151,12 +143,12 @@ export default function WorkflowGridPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-[100rem] flex-col gap-6 p-6 sm:p-10">
+    <div className="mx-auto flex w-full max-w-[100rem] flex-col gap-6">
       <Link
-        href={`/lab-workflow/${projectId}`}
+        href={`/projects/${projectId}/lab-workflow`}
         className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:underline"
       >
-        <ArrowLeft className="size-4" /> Back to {project?.name ?? "workflows"}
+        <ArrowLeft className="size-4" /> Back to workflows
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-4">

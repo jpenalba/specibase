@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SampleRecord } from "@/lib/samples-store";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
 import { GbifSpeciesLayer } from "@/lib/gbif-store";
@@ -13,6 +13,7 @@ import { SampleMap } from "@/components/database/sample-map";
 import { LayerPanel } from "@/components/database/layer-panel";
 import { SampleTable } from "@/components/samples/sample-table";
 import { FieldPicker } from "@/components/samples/field-picker";
+import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
 import { Button } from "@/components/ui/button";
 
 export default function DatabasePage() {
@@ -34,33 +35,28 @@ export default function DatabasePage() {
   const [editMode, setEditMode] = useState(false);
   const [gbifLayers, setGbifLayers] = useState<GbifSpeciesLayer[]>([]);
   const [visibleGbifIds, setVisibleGbifIds] = useState<Set<string>>(new Set());
+  const [showAddSamples, setShowAddSamples] = useState(false);
   const { selected, toggle } = useOptionalFields();
   const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    // Fetched independently — projects failing to load (e.g. the
-    // projects/sample_projects migration hasn't been run yet) must not
-    // also block samples from showing up.
+  // Reloads samples and projects/links together — used on first load and
+  // again after a batch is uploaded from the panel below, since a newly
+  // added sample may also have been linked to a (possibly brand new)
+  // project. Kept separate from the GBIF fetch, which an upload never
+  // affects.
+  const loadSamplesAndProjects = useCallback(() => {
     fetch("/api/samples")
       .then((res) => res.json())
       .then((data) => {
-        if (cancelled) return;
         if (data.errors?.length > 0) setSamplesError(data.errors.join(" "));
         else setSamples(data.samples ?? []);
       })
-      .catch(() => {
-        if (!cancelled) setSamplesError("Couldn't reach the server.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .catch(() => setSamplesError("Couldn't reach the server."))
+      .finally(() => setLoading(false));
 
     fetch("/api/projects")
       .then((res) => res.json())
       .then((data) => {
-        if (cancelled) return;
         if (data.errors?.length > 0) {
           setProjectsError(data.errors.join(" "));
         } else {
@@ -68,12 +64,15 @@ export default function DatabasePage() {
           setLinks(data.links ?? []);
         }
       })
-      .catch(() => {
-        if (!cancelled) setProjectsError("Couldn't reach the server.");
-      });
+      .catch(() => setProjectsError("Couldn't reach the server."));
+  }, []);
 
-    // Also independent — a GBIF fetch failure (missing migration, GBIF
-    // itself being unreachable) shouldn't block samples or projects either.
+  useEffect(() => {
+    loadSamplesAndProjects();
+
+    // Independent of the above — a GBIF fetch failure (missing migration,
+    // GBIF itself being unreachable) shouldn't block samples or projects.
+    let cancelled = false;
     fetch("/api/gbif-layers")
       .then((res) => res.json())
       .then((data) => {
@@ -84,11 +83,10 @@ export default function DatabasePage() {
       .catch(() => {
         if (!cancelled) setGbifError("Couldn't reach the server.");
       });
-
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadSamplesAndProjects]);
 
   const { root, children } = useMemo(
     () => buildLayers(samples, projects, links, layerStyles),
@@ -198,12 +196,21 @@ export default function DatabasePage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 sm:p-10">
-      <div>
-        <h1 className="text-2xl font-semibold">Database</h1>
-        <p className="text-sm text-muted-foreground">
-          Everything already uploaded. Tick a layer to show it on the map;
-          click a layer&apos;s name to view its samples in the table below.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Database</h1>
+          <p className="text-sm text-muted-foreground">
+            Everything already uploaded. Tick a layer to show it on the map;
+            click a layer&apos;s name to view its samples in the table below.
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => setShowAddSamples((v) => !v)}>
+          {showAddSamples ? "Hide add samples" : "Add samples"}
+        </Button>
+      </div>
+
+      <div className={showAddSamples ? "" : "hidden"}>
+        <AddSamplesPanel onUploaded={loadSamplesAndProjects} />
       </div>
 
       {samplesError && (

@@ -65,6 +65,7 @@ export function SampleTable({
   onExitEditMode,
   onSampleUpdated,
   onSampleDeleted,
+  extraRowAction,
 }: {
   samples: SampleRecord[];
   // Every Sample ID currently in the database (not just this table's
@@ -87,6 +88,10 @@ export function SampleTable({
   onExitEditMode: () => void;
   onSampleUpdated: (sample: SampleRecord) => void;
   onSampleDeleted: (id: string) => void;
+  // An extra per-row action shown in the actions menu (non-edit mode only)
+  // above Delete — e.g. a project-scoped view offering "Remove from
+  // project" alongside the sample's usual Edit/Delete.
+  extraRowAction?: { label: string; onSelect: (sample: SampleRecord) => void };
 }) {
   const columns = getVisibleColumns(visibleOptionalKeys);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -377,6 +382,11 @@ export function SampleTable({
                             <DropdownMenuItem onSelect={() => openEditDialog(sample)}>
                               Edit
                             </DropdownMenuItem>
+                            {extraRowAction && (
+                              <DropdownMenuItem onSelect={() => extraRowAction.onSelect(sample)}>
+                                {extraRowAction.label}
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               variant="destructive"
                               onSelect={() => handleDelete(sample)}

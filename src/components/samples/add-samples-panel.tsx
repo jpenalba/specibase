@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RawRow } from "@/lib/validation";
+import { SampleRecord } from "@/lib/samples-store";
 import { useOptionalFields } from "@/lib/use-optional-fields";
 import { StagingTable, StagedSample } from "@/components/samples/staging-table";
 import { AddSampleDialog } from "@/components/samples/add-sample-dialog";
@@ -25,18 +26,26 @@ function newClientId() {
     : `${Date.now()}-${Math.random()}`;
 }
 
-export default function SamplesPage() {
+// The stage-then-upload flow shared by the Database page (samples not tied
+// to any particular project — pass no fixedProjectId, and a ProjectPicker
+// lets someone optionally associate the batch anyway) and a project's own
+// Samples tab (fixedProjectId set, so every row lands in that project with
+// no picker needed).
+export function AddSamplesPanel({
+  fixedProjectId,
+  onUploaded,
+}: {
+  fixedProjectId?: string;
+  onUploaded?: (inserted: SampleRecord[]) => void;
+}) {
   const { selected, toggle } = useOptionalFields();
   const [dbIdentifiers, setDbIdentifiers] = useState<string[]>([]);
   const [staged, setStaged] = useState<StagedSample[]>([]);
-  const [projectSelection, setProjectSelection] = useState<ProjectSelection>({
-    mode: "none",
-  });
+  const [projectSelection, setProjectSelection] = useState<ProjectSelection>({ mode: "none" });
   const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState<{
-    tone: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(
+    null
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -53,9 +62,7 @@ export default function SamplesPage() {
 
   const takenIdentifiers = [
     ...dbIdentifiers,
-    ...staged
-      .map((s) => s.row.primary_identifier?.trim())
-      .filter((id): id is string => Boolean(id)),
+    ...staged.map((s) => s.row.primary_identifier?.trim()).filter((id): id is string => Boolean(id)),
   ];
 
   function stageOne(row: RawRow) {
@@ -64,10 +71,7 @@ export default function SamplesPage() {
   }
 
   function stageMany(rows: RawRow[]) {
-    setStaged((prev) => [
-      ...prev,
-      ...rows.map((row) => ({ clientId: newClientId(), row })),
-    ]);
+    setStaged((prev) => [...prev, ...rows.map((row) => ({ clientId: newClientId(), row }))]);
     setMessage(null);
   }
 
@@ -80,13 +84,12 @@ export default function SamplesPage() {
     setUploading(true);
     setMessage(null);
     try {
+      const projectId =
+        fixedProjectId ?? (projectSelection.mode === "existing" ? projectSelection.projectId : undefined);
       const res = await fetch("/api/samples/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rows: staged.map((s) => s.row),
-          projectId: projectSelection.mode === "existing" ? projectSelection.projectId : undefined,
-        }),
+        body: JSON.stringify({ rows: staged.map((s) => s.row), projectId }),
       });
       const data = await res.json();
 
@@ -98,14 +101,12 @@ export default function SamplesPage() {
         return;
       }
 
-      const insertedIds = new Set(
-        (data.inserted ?? []).map((s: { primary_identifier: string }) => s.primary_identifier)
-      );
+      const inserted: SampleRecord[] = data.inserted ?? [];
+      const insertedIds = new Set(inserted.map((s) => s.primary_identifier));
       setStaged((prev) => prev.filter((s) => !insertedIds.has(s.row.primary_identifier?.trim())));
       setDbIdentifiers((prev) => [...prev, ...insertedIds] as string[]);
 
-      const projectNote = data.project?.name ? ` and added to project "${data.project.name}"` : "";
-      let text = `Uploaded ${insertedIds.size} sample(s)${projectNote}.`;
+      let text = `Uploaded ${insertedIds.size} sample(s).`;
       if (data.skipped?.length > 0) {
         text += ` ${data.skipped.length} row(s) were skipped — they're still staged below.`;
       }
@@ -113,6 +114,7 @@ export default function SamplesPage() {
         text += ` ${data.errors.join(" ")}`;
       }
       setMessage({ tone: data.errors?.length > 0 ? "error" : "success", text });
+      if (inserted.length > 0) onUploaded?.(inserted);
     } catch {
       setMessage({ tone: "error", text: "Upload failed — check your connection and try again." });
     } finally {
@@ -123,16 +125,12 @@ export default function SamplesPage() {
   const canUpload = staged.length > 0 && !uploading;
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 sm:p-10">
+    <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Add samples</h1>
-          <p className="text-sm text-muted-foreground">
-            A temporary holding space — stage samples here, then upload the
-            batch to the database below. {staged.length} sample
-            {staged.length === 1 ? "" : "s"} waiting.
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Stage samples here, then upload the batch. {staged.length} sample
+          {staged.length === 1 ? "" : "s"} waiting.
+        </p>
         <div className="flex flex-wrap gap-2">
           <ImportDialog takenIdentifiers={takenIdentifiers} onStage={stageMany} />
           <TemplateDialog selected={selected} onToggle={toggle} />
@@ -148,8 +146,8 @@ export default function SamplesPage() {
         <CardHeader>
           <CardTitle>Table columns</CardTitle>
           <CardDescription>
-            Tick which optional fields to show here — the same set is used
-            for the CSV template.
+            Tick which optional fields to show here — the same set is used for the CSV
+            template.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -163,12 +161,15 @@ export default function SamplesPage() {
         <CardHeader>
           <CardTitle>Upload staged batch</CardTitle>
           <CardDescription>
-            Nothing above is in the database yet. Choose whether to also
-            associate this batch with a project, then upload.
+            {fixedProjectId
+              ? "Nothing above is in the database yet."
+              : "Nothing above is in the database yet. Choose whether to also associate this batch with a project, then upload."}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <ProjectPicker selection={projectSelection} onChange={setProjectSelection} />
+          {!fixedProjectId && (
+            <ProjectPicker selection={projectSelection} onChange={setProjectSelection} />
+          )}
           {message && (
             <div
               className={
@@ -183,9 +184,7 @@ export default function SamplesPage() {
         </CardContent>
         <CardFooter>
           <Button onClick={handleUpload} disabled={!canUpload}>
-            {uploading
-              ? "Uploading..."
-              : `Upload ${staged.length} sample(s) to database`}
+            {uploading ? "Uploading..." : `Upload ${staged.length} sample(s) to database`}
           </Button>
         </CardFooter>
       </Card>

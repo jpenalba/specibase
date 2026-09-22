@@ -41,7 +41,7 @@ export function WorkflowCard({
       </CardHeader>
       <CardContent>
         <Button asChild variant="outline" size="sm">
-          <Link href={`/lab-workflow/${projectId}/${workflow.id}`}>
+          <Link href={`/projects/${projectId}/lab-workflow/${workflow.id}`}>
             <ListChecks className="size-4" />
             Open grid
           </Link>
