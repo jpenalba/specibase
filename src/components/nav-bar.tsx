@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
+import { SpecibaseLogo } from "./specibase-logo";
 
 const LINKS = [
   { href: "/samples", label: "Add samples" },
@@ -17,7 +18,10 @@ export function NavBar() {
   return (
     <nav className="border-b border-border">
       <div className="mx-auto flex max-w-6xl items-center gap-1 px-6 py-3 sm:px-10">
-        <span className="mr-4 text-sm font-semibold">Specibase</span>
+        <span className="mr-4 flex items-center gap-2">
+          <SpecibaseLogo size={22} />
+          <span className="text-sm font-semibold">Specibase</span>
+        </span>
         {LINKS.map((link) => (
           <Link
             key={link.href}
