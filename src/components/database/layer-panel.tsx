@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronRight, Plus, X } from "lucide-react";
 import { MapLayer } from "@/lib/layers";
 import { LayerShape, LAYER_SHAPES } from "@/lib/layer-shapes";
 import { PICKABLE_LAYER_COLORS } from "@/lib/layer-colors";
+import { GbifSpeciesLayer } from "@/lib/gbif-store";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LayerShapeIcon } from "./layer-shape-icon";
+import { AddGbifSpeciesDialog } from "./add-gbif-species-dialog";
 import { cn } from "@/lib/utils";
 
 function StylePicker({
@@ -128,6 +131,83 @@ function LayerRow({
   );
 }
 
+// GBIF species are their own top-level group, expandable/collapsible like
+// a folder — unlike the sample-based layers above, they have no color/shape
+// picker (a fixed set of GBIF's own tile styles instead, chosen once when
+// adding) and can't be made "active" for the table below, since there's no
+// sample subset behind a raster density tile.
+function GbifGroup({
+  species,
+  visibleGbifIds,
+  onToggleVisible,
+  onRemove,
+  onAdded,
+}: {
+  species: GbifSpeciesLayer[];
+  visibleGbifIds: Set<string>;
+  onToggleVisible: (id: string) => void;
+  onRemove: (id: string) => void;
+  onAdded: (layer: GbifSpeciesLayer) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="flex size-5 shrink-0 items-center justify-center rounded hover:bg-accent"
+          aria-label={expanded ? "Collapse GBIF layers" : "Expand GBIF layers"}
+          aria-expanded={expanded}
+        >
+          <ChevronRight className={cn("size-4 transition-transform", expanded && "rotate-90")} />
+        </button>
+        <span className="flex-1 truncate text-sm font-medium">GBIF</span>
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          aria-label="Add a species range from GBIF"
+          title="Add a species range from GBIF"
+        >
+          <Plus className="size-3.5" />
+        </button>
+      </div>
+
+      {expanded &&
+        (species.length === 0 ? (
+          <p className="ml-9 px-2 py-1.5 text-xs text-muted-foreground">No species added yet</p>
+        ) : (
+          species.map((sp) => (
+            <div key={sp.id} className="ml-5 flex items-center gap-2 rounded-md px-2 py-1.5">
+              <Checkbox
+                checked={visibleGbifIds.has(sp.id)}
+                onCheckedChange={() => onToggleVisible(sp.id)}
+                aria-label={`Show ${sp.scientific_name} on the map`}
+              />
+              <span className="flex-1 truncate text-sm italic" title={sp.scientific_name}>
+                {sp.scientific_name}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(sp.id)}
+                className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                aria-label={`Remove ${sp.scientific_name}`}
+                title="Remove"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ))
+        ))}
+
+      <AddGbifSpeciesDialog open={addOpen} onOpenChange={setAddOpen} onAdded={onAdded} />
+    </div>
+  );
+}
+
 export function LayerPanel({
   root,
   projectLayers,
@@ -137,6 +217,11 @@ export function LayerPanel({
   onSelectActive,
   onSetColor,
   onSetShape,
+  gbifSpecies,
+  visibleGbifIds,
+  onToggleGbifVisible,
+  onGbifAdded,
+  onGbifRemoved,
 }: {
   root: MapLayer;
   projectLayers: MapLayer[];
@@ -146,6 +231,11 @@ export function LayerPanel({
   onSelectActive: (layerId: string) => void;
   onSetColor: (layerId: string, color: string) => void;
   onSetShape: (layerId: string, shape: LayerShape) => void;
+  gbifSpecies: GbifSpeciesLayer[];
+  visibleGbifIds: Set<string>;
+  onToggleGbifVisible: (id: string) => void;
+  onGbifAdded: (layer: GbifSpeciesLayer) => void;
+  onGbifRemoved: (id: string) => void;
 }) {
   return (
     <div className="flex h-full flex-col gap-1 overflow-y-auto rounded-lg border border-border p-2">
@@ -183,6 +273,16 @@ export function LayerPanel({
           />
         ))
       )}
+
+      <div className="my-1 border-t border-border" />
+
+      <GbifGroup
+        species={gbifSpecies}
+        visibleGbifIds={visibleGbifIds}
+        onToggleVisible={onToggleGbifVisible}
+        onRemove={onGbifRemoved}
+        onAdded={onGbifAdded}
+      />
     </div>
   );
 }

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds } from "maplibre-gl";
 import { SampleRecord } from "@/lib/samples-store";
 import { MapLayer, ALL_LAYER_ID } from "@/lib/layers";
+import { GbifSpeciesLayer } from "@/lib/gbif-store";
+import { gbifTileUrl } from "@/lib/gbif";
 import { LayerShape, shapePolygonPoints } from "@/lib/layer-shapes";
 import { FieldDef } from "@/lib/fields";
 import { formatToDDMMYYYY } from "@/lib/dates";
@@ -260,6 +262,8 @@ export function SampleMap({
   onSyncError,
   hiddenSampleIds,
   highlightedSampleId,
+  gbifLayers,
+  visibleGbifIds,
 }: {
   samples: SampleRecord[];
   layers: MapLayer[];
@@ -277,6 +281,10 @@ export function SampleMap({
   // The sample whose table row was last clicked — its marker is drawn
   // larger with a highlight ring, and the map pans/zooms to it.
   highlightedSampleId: string | null;
+  // Saved GBIF species — rendered as raster tile overlays, not markers, so
+  // they're tracked entirely separately from the sample layers above.
+  gbifLayers: GbifSpeciesLayer[];
+  visibleGbifIds: Set<string>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -287,6 +295,9 @@ export function SampleMap({
     { id: string; marker: Marker; el: HTMLDivElement; shape: LayerShape; color: string; baseSize: number }[]
   >([]);
   const lastCoordsRef = useRef<[number, number][]>([]);
+  // Which GBIF source/layer ids are currently added to the live map style —
+  // reset whenever a basemap switch wipes the style out from under them.
+  const gbifAddedIdsRef = useRef<Set<string>>(new Set());
   const [basemap, setBasemap] = useState<BasemapId>("streets");
   const [exporting, setExporting] = useState(false);
 
@@ -299,6 +310,8 @@ export function SampleMap({
   // current style becomes ready (which can happen before or after that
   // closure was last updated).
   const latestSyncMarkersRef = useRef<() => void>(() => {});
+  // Same idea as latestSyncMarkersRef, for the GBIF tile sources/layers.
+  const latestSyncGbifRef = useRef<() => void>(() => {});
   // Tracks the basemap the map's style was last set to, so the basemap
   // effect (below) can skip calling setStyle() on first mount — the
   // constructor already applied the initial style — and only swap styles
@@ -346,6 +359,7 @@ export function SampleMap({
       styleReadyRef.current = true;
       map.resize();
       latestSyncMarkersRef.current();
+      latestSyncGbifRef.current();
     });
     mapRef.current = map;
 
@@ -366,11 +380,16 @@ export function SampleMap({
     if (!map || currentStyleIdRef.current === basemap) return;
 
     styleReadyRef.current = false;
+    // setStyle() discards every source/layer added on top of the previous
+    // style, GBIF's included — forget what's "added" so the sync effect
+    // below re-adds all of them instead of thinking they're still there.
+    gbifAddedIdsRef.current = new Set();
     currentStyleIdRef.current = basemap;
     map.setStyle(BASEMAPS[basemap].style as Parameters<typeof map.setStyle>[0]);
     map.once("idle", () => {
       styleReadyRef.current = true;
       latestSyncMarkersRef.current();
+      latestSyncGbifRef.current();
     });
   }, [basemap]);
 
@@ -437,6 +456,59 @@ export function SampleMap({
     // call latestSyncMarkersRef.current() — which by then points at this
     // run's syncMarkers — once the style settles.
   }, [samples, layers, visibleLayerIds, hiddenSampleIds, popupColumns, onSyncError]);
+
+  // Adds/removes GBIF occurrence-density raster layers directly on the
+  // MapLibre style — unlike markers, these are real style layers (so they
+  // draw beneath the DOM-based markers automatically, and get swept up
+  // into the same canvas the PDF export already reads from). Diffed
+  // in-place against gbifAddedIdsRef rather than remove-then-readd-all like
+  // syncMarkers, since sources/layers here map to real network requests
+  // (a tile fetch) that shouldn't restart just because an unrelated
+  // species' visibility changed.
+  useEffect(() => {
+    function syncGbif() {
+      const map = mapRef.current;
+      if (!map) return;
+
+      try {
+        const wanted = new Set(
+          gbifLayers.filter((g) => visibleGbifIds.has(g.id)).map((g) => g.id)
+        );
+
+        for (const id of gbifAddedIdsRef.current) {
+          if (wanted.has(id)) continue;
+          const layerId = `gbif-${id}`;
+          if (map.getLayer(layerId)) map.removeLayer(layerId);
+          if (map.getSource(layerId)) map.removeSource(layerId);
+        }
+
+        for (const species of gbifLayers) {
+          if (!wanted.has(species.id)) continue;
+          const layerId = `gbif-${species.id}`;
+          if (map.getSource(layerId)) continue;
+          map.addSource(layerId, {
+            type: "raster",
+            tiles: [gbifTileUrl(species.taxon_key, species.style)],
+            tileSize: 256,
+            attribution: "GBIF.org",
+          });
+          map.addLayer({ id: layerId, type: "raster", source: layerId });
+        }
+
+        gbifAddedIdsRef.current = wanted;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown map error";
+        console.error("Failed to sync GBIF layers", error);
+        onSyncError?.(message);
+      }
+    }
+
+    latestSyncGbifRef.current = syncGbif;
+    if (styleReadyRef.current) {
+      syncGbif();
+    }
+    // Same deferral as syncMarkers above if a style swap is still in flight.
+  }, [gbifLayers, visibleGbifIds, onSyncError]);
 
   // Restyles just the previously/newly highlighted marker in place, and
   // pans/zooms to the new one — deliberately not folded into the effect
@@ -551,7 +623,8 @@ export function SampleMap({
 
       const imageTop = margin + 28;
       const legendLayers = layers.filter((l) => visibleLayerIds.has(l.id));
-      const legendHeight = 16 + legendLayers.length * 14;
+      const legendGbifLayers = gbifLayers.filter((g) => visibleGbifIds.has(g.id));
+      const legendHeight = 16 + (legendLayers.length + legendGbifLayers.length) * 14;
       const maxImgWidth = pageWidth - margin * 2;
       const maxImgHeight = pageHeight - imageTop - margin - legendHeight;
       const scale = Math.min(maxImgWidth / width, maxImgHeight / height);
@@ -582,8 +655,15 @@ export function SampleMap({
         doc.text(`${layer.label} (${layer.sampleIds.size})`, margin + 14, legendY);
         legendY += 14;
       }
+      for (const species of legendGbifLayers) {
+        doc.setTextColor(30, 30, 30);
+        doc.text(`GBIF: ${species.scientific_name}`, margin + 14, legendY);
+        legendY += 14;
+      }
 
-      const attribution = BASEMAPS[basemap].attribution;
+      const attributionParts = [BASEMAPS[basemap].attribution];
+      if (legendGbifLayers.length > 0) attributionParts.push("GBIF.org");
+      const attribution = attributionParts.filter(Boolean).join(" · ");
       if (attribution) {
         doc.setFontSize(7);
         doc.setTextColor(140, 140, 140);

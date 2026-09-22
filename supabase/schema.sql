@@ -106,6 +106,20 @@ create table if not exists collection_samples (
   unique (collection_id, primary_identifier)
 );
 
+-- Saved GBIF species range layers for the Database page's map — see
+-- src/lib/gbif.ts. No occurrence data is stored here, just which species
+-- and which color style to request occurrence-density tiles in.
+create table if not exists gbif_species_layers (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+
+  -- GBIF's own numeric identifier for this taxon (its "usageKey"/"key").
+  taxon_key bigint not null unique,
+  scientific_name text not null,
+  rank text,
+  style text not null default 'classic.point'
+);
+
 -- No client code ever talks to Supabase directly (the app's own API routes
 -- do, using the service role key, which bypasses RLS) — this just makes
 -- sure that stays true if an anon-key client ever gets added by mistake.
@@ -114,3 +128,4 @@ alter table projects enable row level security;
 alter table sample_projects enable row level security;
 alter table collections enable row level security;
 alter table collection_samples enable row level security;
+alter table gbif_species_layers enable row level security;

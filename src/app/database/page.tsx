@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SampleRecord } from "@/lib/samples-store";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
+import { GbifSpeciesLayer } from "@/lib/gbif-store";
 import { buildLayers, ALL_LAYER_ID, LayerStyle } from "@/lib/layers";
 import { LayerShape } from "@/lib/layer-shapes";
 import { getVisibleColumns } from "@/lib/fields";
@@ -21,6 +22,7 @@ export default function DatabasePage() {
   const [loading, setLoading] = useState(true);
   const [samplesError, setSamplesError] = useState<string | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [gbifError, setGbifError] = useState<string | null>(null);
   const [visibleLayerIds, setVisibleLayerIds] = useState<Set<string>>(
     new Set([ALL_LAYER_ID])
   );
@@ -30,6 +32,8 @@ export default function DatabasePage() {
   const [highlightedSampleId, setHighlightedSampleId] = useState<string | null>(null);
   const [layerStyles, setLayerStyles] = useState<Map<string, LayerStyle>>(new Map());
   const [editMode, setEditMode] = useState(false);
+  const [gbifLayers, setGbifLayers] = useState<GbifSpeciesLayer[]>([]);
+  const [visibleGbifIds, setVisibleGbifIds] = useState<Set<string>>(new Set());
   const { selected, toggle } = useOptionalFields();
   const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
 
@@ -66,6 +70,19 @@ export default function DatabasePage() {
       })
       .catch(() => {
         if (!cancelled) setProjectsError("Couldn't reach the server.");
+      });
+
+    // Also independent — a GBIF fetch failure (missing migration, GBIF
+    // itself being unreachable) shouldn't block samples or projects either.
+    fetch("/api/gbif-layers")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.errors?.length > 0) setGbifError(data.errors.join(" "));
+        else setGbifLayers(data.layers ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setGbifError("Couldn't reach the server.");
       });
 
     return () => {
@@ -141,6 +158,38 @@ export default function DatabasePage() {
     setHighlightedSampleId((current) => (current === id ? null : current));
   }
 
+  function toggleGbifVisible(id: string) {
+    setVisibleGbifIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleGbifAdded(layer: GbifSpeciesLayer) {
+    setGbifLayers((prev) => [...prev, layer].sort((a, b) => a.scientific_name.localeCompare(b.scientific_name)));
+    // Shown immediately — adding a species you don't get to see would be a
+    // strange first impression of the feature.
+    setVisibleGbifIds((prev) => new Set(prev).add(layer.id));
+  }
+
+  async function handleGbifRemoved(id: string) {
+    setGbifLayers((prev) => prev.filter((g) => g.id !== id));
+    setVisibleGbifIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    try {
+      await fetch(`/api/gbif-layers/${id}`, { method: "DELETE" });
+    } catch {
+      // Best-effort — worst case it reappears on the next reload, at which
+      // point removing it again just retries the same request.
+    }
+  }
+
   function exportCsv() {
     const csv = samplesToCsv(tableSamples, popupColumns);
     const slug = activeLayer.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -172,6 +221,15 @@ export default function DatabasePage() {
           in the Supabase SQL Editor.
         </div>
       )}
+      {gbifError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          Couldn&apos;t load GBIF species layers: {gbifError}. If you haven&apos;t already, run{" "}
+          <code className="rounded bg-black/10 px-1">
+            supabase/migrations/0005_gbif_species_layers.sql
+          </code>{" "}
+          in the Supabase SQL Editor.
+        </div>
+      )}
       {mapSyncError && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           The map couldn&apos;t draw the points: {mapSyncError}
@@ -188,6 +246,8 @@ export default function DatabasePage() {
             onSyncError={setMapSyncError}
             hiddenSampleIds={hiddenSampleIds}
             highlightedSampleId={highlightedSampleId}
+            gbifLayers={gbifLayers}
+            visibleGbifIds={visibleGbifIds}
           />
         </div>
         <div className="w-64 shrink-0">
@@ -200,6 +260,11 @@ export default function DatabasePage() {
             onSelectActive={setActiveLayerId}
             onSetColor={setLayerColor}
             onSetShape={setLayerShape}
+            gbifSpecies={gbifLayers}
+            visibleGbifIds={visibleGbifIds}
+            onToggleGbifVisible={toggleGbifVisible}
+            onGbifAdded={handleGbifAdded}
+            onGbifRemoved={handleGbifRemoved}
           />
         </div>
       </div>
