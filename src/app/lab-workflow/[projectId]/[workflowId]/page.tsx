@@ -14,7 +14,7 @@ import { StepManagerDialog } from "@/components/lab-workflow/step-manager-dialog
 import { SimpleGrid } from "@/components/lab-workflow/simple-grid";
 import { DetailedView, DetailedEntryPatch } from "@/components/lab-workflow/detailed-view";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, compareIdentifiers } from "@/lib/utils";
 
 type ViewMode = "simple" | "detailed";
 
@@ -89,7 +89,10 @@ export default function WorkflowGridPage() {
   }, [load]);
 
   const enrolledSamples = useMemo(
-    () => allSamples.filter((s) => enrolledIds.has(s.id)),
+    () =>
+      allSamples
+        .filter((s) => enrolledIds.has(s.id))
+        .sort((a, b) => compareIdentifiers(a.primary_identifier, b.primary_identifier)),
     [allSamples, enrolledIds]
   );
 

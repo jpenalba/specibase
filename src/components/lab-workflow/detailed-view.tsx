@@ -87,13 +87,13 @@ function StepRows({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="sticky left-0 z-10 bg-card">Sample ID</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Method</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead>Performed by</TableHead>
-            <TableHead>Quantification</TableHead>
-            <TableHead>Notes</TableHead>
+            <TableHead className="sticky left-0 z-10 h-8 bg-card">Sample ID</TableHead>
+            <TableHead className="h-8">Status</TableHead>
+            <TableHead className="h-8">Method</TableHead>
+            <TableHead className="h-8">Date</TableHead>
+            <TableHead className="h-8">Performed by</TableHead>
+            <TableHead className="h-8">Quantification</TableHead>
+            <TableHead className="h-8">Notes</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -101,10 +101,10 @@ function StepRows({
             const row = rows[sample.id] ?? rowFromEntry(undefined);
             return (
               <TableRow key={sample.id}>
-                <TableCell className="sticky left-0 z-10 bg-card font-mono">
+                <TableCell className="sticky left-0 z-10 bg-card py-1 font-mono">
                   {sample.primary_identifier}
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-1">
                   <select
                     value={row.status}
                     onChange={(e) => {
@@ -121,7 +121,7 @@ function StepRows({
                     ))}
                   </select>
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-1">
                   <Input
                     className="h-8 min-w-32"
                     value={row.method}
@@ -129,7 +129,7 @@ function StepRows({
                     onBlur={() => commit(sample.id, { method: row.method || null })}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-1">
                   <Input
                     type="date"
                     className="h-8"
@@ -140,7 +140,7 @@ function StepRows({
                     }}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-1">
                   <Input
                     className="h-8 min-w-32"
                     value={row.performed_by}
@@ -148,7 +148,7 @@ function StepRows({
                     onBlur={() => commit(sample.id, { performed_by: row.performed_by || null })}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-1">
                   <Input
                     className="h-8 min-w-32"
                     placeholder="e.g. 45.2 ng/µL"
@@ -161,7 +161,7 @@ function StepRows({
                     }
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-1">
                   <Input
                     className="h-8 min-w-40"
                     value={row.notes}

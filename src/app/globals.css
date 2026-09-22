@@ -21,7 +21,9 @@
   --success: #dcfce7;
   --success-foreground: #166534;
   --warning: #fef9c3;
-  --warning-foreground: #854d0e;
+  /* yellow-800 (#854d0e) reads as brown/red at this darkness — yellow-600
+     stays recognizably gold instead. */
+  --warning-foreground: #ca8a04;
   --radius: 0.5rem;
 }
 

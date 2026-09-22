@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { SampleRecord } from "@/lib/samples-store";
+import { compareIdentifiers } from "@/lib/utils";
 import { SamplePicker } from "@/components/projects/sample-picker";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -38,7 +39,10 @@ export function ManageSamplesDialog({
   const [error, setError] = useState<string | null>(null);
 
   const enrolledSamples = useMemo(
-    () => allSamples.filter((s) => enrolledIds.has(s.id)),
+    () =>
+      allSamples
+        .filter((s) => enrolledIds.has(s.id))
+        .sort((a, b) => compareIdentifiers(a.primary_identifier, b.primary_identifier)),
     [allSamples, enrolledIds]
   );
 

@@ -95,10 +95,10 @@ export function SimpleGrid({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="sticky left-0 z-10 bg-card">Sample ID</TableHead>
-            <TableHead>Species</TableHead>
+            <TableHead className="sticky left-0 z-10 h-8 bg-card">Sample ID</TableHead>
+            <TableHead className="h-8">Species</TableHead>
             {steps.map((step) => (
-              <TableHead key={step.id} className="text-center">
+              <TableHead key={step.id} className="h-8 text-center">
                 {step.label}
               </TableHead>
             ))}
@@ -107,19 +107,19 @@ export function SimpleGrid({
         <TableBody>
           {samples.map((sample) => (
             <TableRow key={sample.id}>
-              <TableCell className="sticky left-0 z-10 bg-card font-mono">
+              <TableCell className="sticky left-0 z-10 bg-card py-1 font-mono">
                 {sample.primary_identifier}
               </TableCell>
-              <TableCell className="text-muted-foreground">{sample.species}</TableCell>
+              <TableCell className="py-1 text-muted-foreground">{sample.species}</TableCell>
               {steps.map((step) => {
                 const status = statusFor(step.id, sample.id);
                 return (
-                  <TableCell key={step.id} className="text-center">
+                  <TableCell key={step.id} className="py-1 text-center">
                     <button
                       type="button"
                       title={STATUS_LABELS[status]}
                       aria-label={`${sample.primary_identifier} — ${step.label}: ${STATUS_LABELS[status]}`}
-                      className="rounded-full p-1.5 hover:bg-accent"
+                      className="rounded-full p-1 hover:bg-accent"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         startPaint(step.id, sample.id, e.button === 2);
@@ -127,7 +127,7 @@ export function SimpleGrid({
                       onPointerEnter={() => paint(step.id, sample.id)}
                       onContextMenu={(e) => e.preventDefault()}
                     >
-                      <span className={cn("block size-4 rounded-full", STATUS_DOT_CLASS[status])} />
+                      <span className={cn("block size-3.5 rounded-full", STATUS_DOT_CLASS[status])} />
                     </button>
                   </TableCell>
                 );
