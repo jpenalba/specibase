@@ -1,7 +1,7 @@
 import { getSupabase } from "./supabase";
-import { OPTIONAL_FIELDS } from "./fields";
+import { OPTIONAL_FIELDS, FieldDef } from "./fields";
 import { RawRow, validateRow } from "./validation";
-import { parseDDMMYYYY } from "./dates";
+import { parseDDMMYYYY, formatToDDMMYYYY } from "./dates";
 
 const TABLE = "samples";
 
@@ -14,6 +14,23 @@ export type SampleRecord = {
   longitude?: number;
   [optionalField: string]: string | number | undefined;
 };
+
+// Turns a stored record back into the string-keyed shape an editable form
+// or table cell works with — the inverse of the insert/update normalization
+// below. Only pulls the given columns, so a caller editing just the
+// currently-visible table columns doesn't have to know about the rest.
+export function sampleToRawRow(sample: SampleRecord, columns: FieldDef[]): RawRow {
+  const row: RawRow = {};
+  for (const col of columns) {
+    const raw = sample[col.key];
+    if (raw === undefined || raw === null || raw === "") {
+      row[col.key] = "";
+      continue;
+    }
+    row[col.key] = col.type === "date" ? formatToDDMMYYYY(String(raw)) : String(raw);
+  }
+  return row;
+}
 
 export async function readSamples(): Promise<SampleRecord[]> {
   const { data, error } = await getSupabase()
@@ -87,6 +104,74 @@ export async function insertSample(row: RawRow): Promise<InsertResult> {
   }
 
   return { ok: true, sample: data as SampleRecord };
+}
+
+// Partial update — only fields present as keys in `row` are changed, so a
+// caller that only knows about a subset of columns (e.g. an editable
+// table showing just the currently-visible optional fields) can't
+// accidentally wipe out a column it never displayed.
+export async function updateSample(id: string, row: RawRow): Promise<InsertResult> {
+  const { data: current, error: fetchError } = await getSupabase()
+    .from(TABLE)
+    .select("primary_identifier")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchError) return { ok: false, errors: [fetchError.message] };
+  if (!current) return { ok: false, errors: ["Sample not found"] };
+
+  // The row's own current identifier isn't a collision with itself —
+  // otherwise saving a row back unchanged would fail validation.
+  const existingIds = await existingIdentifiers();
+  existingIds.delete(current.primary_identifier as string);
+  const { errors } = validateRow(row, existingIds);
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+
+  const normalized = normalizeDatesForStorage(row);
+  const patch: Record<string, string | number | null> = {};
+  for (const key of Object.keys(row)) {
+    if (key === "primary_identifier") {
+      patch.primary_identifier = normalized.primary_identifier.trim();
+    } else if (key === "species") {
+      patch.species = normalized.species.trim();
+    } else if (key === "latitude" || key === "longitude") {
+      const value = normalized[key];
+      patch[key] = value?.trim() ? Number(value) : null;
+    } else {
+      const value = normalized[key]?.trim();
+      patch[key] = value ? value : null;
+    }
+  }
+
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      return {
+        ok: false,
+        errors: [`Sample ID "${patch.primary_identifier ?? current.primary_identifier}" already exists`],
+      };
+    }
+    return { ok: false, errors: [error.message] };
+  }
+
+  return { ok: true, sample: data as SampleRecord };
+}
+
+export type DeleteResult = { ok: true } | { ok: false; errors: string[] };
+
+// Cascades to sample_projects (see supabase/schema.sql) — no separate
+// cleanup needed for a sample's project links.
+export async function deleteSample(id: string): Promise<DeleteResult> {
+  const { error } = await getSupabase().from(TABLE).delete().eq("id", id);
+  if (error) return { ok: false, errors: [error.message] };
+  return { ok: true };
 }
 
 export type BulkImportResult = {

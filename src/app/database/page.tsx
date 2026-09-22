@@ -29,6 +29,7 @@ export default function DatabasePage() {
   const [hiddenSampleIds, setHiddenSampleIds] = useState<Set<string>>(new Set());
   const [highlightedSampleId, setHighlightedSampleId] = useState<string | null>(null);
   const [layerStyles, setLayerStyles] = useState<Map<string, LayerStyle>>(new Map());
+  const [editMode, setEditMode] = useState(false);
   const { selected, toggle } = useOptionalFields();
   const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
 
@@ -125,6 +126,21 @@ export default function DatabasePage() {
     setHighlightedSampleId((current) => (current === sampleId ? null : sampleId));
   }
 
+  function handleSampleUpdated(updated: SampleRecord) {
+    setSamples((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+  }
+
+  function handleSampleDeleted(id: string) {
+    setSamples((prev) => prev.filter((s) => s.id !== id));
+    setHiddenSampleIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setHighlightedSampleId((current) => (current === id ? null : current));
+  }
+
   function exportCsv() {
     const csv = samplesToCsv(tableSamples, popupColumns);
     const slug = activeLayer.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -202,7 +218,19 @@ export default function DatabasePage() {
             Export CSV
           </Button>
         </div>
-        <FieldPicker selected={selected} onToggle={toggle} />
+        <div className="flex items-center gap-3">
+          <FieldPicker selected={selected} onToggle={toggle} />
+          {!editMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditMode(true)}
+              disabled={tableSamples.length === 0}
+            >
+              Edit
+            </Button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -210,11 +238,16 @@ export default function DatabasePage() {
       ) : (
         <SampleTable
           samples={tableSamples}
+          allIdentifiers={samples.map((s) => s.primary_identifier)}
           visibleOptionalKeys={selected}
           hiddenSampleIds={hiddenSampleIds}
           onToggleHidden={toggleSampleHidden}
           highlightedSampleId={highlightedSampleId}
           onSelectSample={selectSample}
+          editMode={editMode}
+          onExitEditMode={() => setEditMode(false)}
+          onSampleUpdated={handleSampleUpdated}
+          onSampleDeleted={handleSampleDeleted}
         />
       )}
     </div>
