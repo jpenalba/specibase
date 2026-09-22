@@ -51,7 +51,9 @@ export async function existingIdentifiers(): Promise<Set<string>> {
 
 // Dates are entered/validated as DD-MM-YYYY but stored as ISO, since a
 // Postgres `date` column parses dash-separated strings ambiguously.
-function normalizeDatesForStorage(fields: RawRow): RawRow {
+// Exported for collections-store.ts's own samples table, which needs the
+// same conversion.
+export function normalizeDatesForStorage(fields: RawRow): RawRow {
   const normalized: RawRow = { ...fields };
   for (const field of OPTIONAL_FIELDS) {
     if (field.type !== "date") continue;
