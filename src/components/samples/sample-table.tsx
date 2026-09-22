@@ -284,11 +284,11 @@ export function SampleTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-0">
+              <TableHead className="h-8 w-0">
                 <span className="sr-only">Show on map</span>
               </TableHead>
               {columns.map((col) => (
-                <TableHead key={col.key}>
+                <TableHead key={col.key} className="h-8">
                   <button
                     type="button"
                     onClick={() => toggleSort(col.key)}
@@ -301,7 +301,7 @@ export function SampleTable({
                   </button>
                 </TableHead>
               ))}
-              <TableHead className="w-0">
+              <TableHead className="h-8 w-0">
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
@@ -319,7 +319,7 @@ export function SampleTable({
                     onClick={editMode ? undefined : () => onSelectSample(sample.id)}
                     className={cn(!editMode && "cursor-pointer")}
                   >
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-1" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={!isHidden}
                         onCheckedChange={() => onToggleHidden(sample.id)}
@@ -332,7 +332,7 @@ export function SampleTable({
                           ? (draft[col.key] ?? "")
                           : (sampleToRawRow(sample, columns)[col.key] ?? "");
                         return (
-                          <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                          <TableCell key={col.key} className="py-1" onClick={(e) => e.stopPropagation()}>
                             <Input
                               className="h-8 min-w-28"
                               placeholder={col.type === "date" ? DATE_FORMAT_LABEL : undefined}
@@ -345,25 +345,25 @@ export function SampleTable({
                       const value = sample[col.key];
                       if (value === undefined || value === "") {
                         return (
-                          <TableCell key={col.key} className={cn(isHidden && "opacity-50")}>
+                          <TableCell key={col.key} className={cn("py-1", isHidden && "opacity-50")}>
                             <span className="text-muted-foreground">—</span>
                           </TableCell>
                         );
                       }
                       return (
-                        <TableCell key={col.key} className={cn(isHidden && "opacity-50")}>
+                        <TableCell key={col.key} className={cn("py-1", isHidden && "opacity-50")}>
                           {col.type === "date" ? formatToDDMMYYYY(String(value)) : String(value)}
                         </TableCell>
                       );
                     })}
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-1" onClick={(e) => e.stopPropagation()}>
                       {editMode ? (
                         <button
                           type="button"
                           onClick={() => handleDelete(sample)}
                           disabled={deletingIds.has(sample.id)}
                           aria-label={`Delete ${sample.primary_identifier}`}
-                          className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                          className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                         >
                           <Trash2 className="size-4" />
                         </button>
@@ -373,7 +373,7 @@ export function SampleTable({
                             <button
                               type="button"
                               aria-label={`Actions for ${sample.primary_identifier}`}
-                              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                              className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                             >
                               <MoreHorizontal className="size-4" />
                             </button>
