@@ -12,7 +12,7 @@ import { BioNotesBlock } from "@/lib/project-bio-notes-store";
 import { LabWorkflow, LabWorkflowDetailColumn, LabWorkflowDetailRow, LabWorkflowDetailValue } from "@/lib/lab-workflows-store";
 import { BioWorkflow } from "@/lib/bio-workflows-store";
 import { buildProjectMapLayer } from "@/lib/marker-style";
-import { MAIN_DATABASE_COLOR, hexToRgb } from "@/lib/layer-colors";
+import { MAIN_DATABASE_COLOR, hexToRgb, strokeColorFor } from "@/lib/layer-colors";
 import { DEFAULT_LAYER_SHAPE, LayerShape, shapePolygonPoints } from "@/lib/layer-shapes";
 import { DEFAULT_OPTIONAL_KEYS, getVisibleColumns } from "@/lib/fields";
 import { renderMarkdownToPdf, renderParagraph } from "@/lib/markdown-pdf";
@@ -108,17 +108,22 @@ function drawLegend(
   for (const entry of legend) {
     const [r, g, b] = hexToRgb(entry.color);
     doc.setFillColor(r, g, b);
+    // A stroke around the swatch, not just a fill — a white or pale
+    // legend color would otherwise disappear into the page.
+    const [sr, sg, sb] = hexToRgb(strokeColorFor(entry.color));
+    doc.setDrawColor(sr, sg, sb);
+    doc.setLineWidth(0.5);
     const cx = margin + 4;
     const cy = y - 3;
     if (entry.shape === "circle") {
-      doc.circle(cx, cy, markerSize / 2, "F");
+      doc.circle(cx, cy, markerSize / 2, "FD");
     } else {
       const half = markerSize / 2;
       const points = shapePolygonPoints(entry.shape, markerSize, 0)!.map(
         ([px, py]) => [cx - half + px, cy - half + py] as [number, number]
       );
       const deltas = points.slice(1).map(([px, py], i) => [px - points[i][0], py - points[i][1]]);
-      doc.lines(deltas, points[0][0], points[0][1], [1, 1], "F", true);
+      doc.lines(deltas, points[0][0], points[0][1], [1, 1], "FD", true);
     }
     doc.setTextColor(30, 30, 30);
     doc.text(`${entry.label} (${entry.count})`, margin + 14, y);

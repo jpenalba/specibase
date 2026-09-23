@@ -7,7 +7,7 @@ import { MapLayer, ALL_LAYER_ID } from "@/lib/layers";
 import { GbifSpeciesLayer } from "@/lib/gbif-store";
 import { gbifTileUrl, GBIF_TILE_SIZE } from "@/lib/gbif";
 import { LayerShape, shapePolygonPoints } from "@/lib/layer-shapes";
-import { hexToRgb } from "@/lib/layer-colors";
+import { hexToRgb, strokeColorFor } from "@/lib/layer-colors";
 import { FieldDef } from "@/lib/fields";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
@@ -223,7 +223,7 @@ function displaySize(baseSize: number, highlighted: boolean): number {
 // different CSS trick per shape.
 function markerShapeSvg(shape: LayerShape, color: string, size: number, highlighted: boolean): string {
   const strokeWidth = highlighted ? 3 : 2;
-  const strokeColor = highlighted ? HIGHLIGHT_RING_COLOR : "#ffffff";
+  const strokeColor = highlighted ? HIGHLIGHT_RING_COLOR : strokeColorFor(color);
   const padding = strokeWidth / 2 + 1;
   const half = size / 2;
   const shapeMarkup =
@@ -614,7 +614,7 @@ export const SampleMap = forwardRef<
       const padding = strokeWidth / 2 + dpr;
 
       ctx.fillStyle = color;
-      ctx.strokeStyle = isHighlighted ? HIGHLIGHT_RING_COLOR : "#ffffff";
+      ctx.strokeStyle = isHighlighted ? HIGHLIGHT_RING_COLOR : strokeColorFor(color);
       ctx.lineWidth = strokeWidth;
       ctx.lineJoin = "round";
       ctx.beginPath();
@@ -720,17 +720,22 @@ export const SampleMap = forwardRef<
       function drawLegendLine(color: string, shape: LayerShape, text: string) {
         const [r, g, b] = hexToRgb(color);
         doc.setFillColor(r, g, b);
+        // A stroke around the swatch, not just a fill — a white or pale
+        // legend color would otherwise disappear into the page.
+        const [sr, sg, sb] = hexToRgb(strokeColorFor(color));
+        doc.setDrawColor(sr, sg, sb);
+        doc.setLineWidth(0.5);
         const cx = margin + 4;
         const cy = legendY - 3;
         if (shape === "circle") {
-          doc.circle(cx, cy, legendMarkerSize / 2, "F");
+          doc.circle(cx, cy, legendMarkerSize / 2, "FD");
         } else {
           const half = legendMarkerSize / 2;
           const points = shapePolygonPoints(shape, legendMarkerSize, 0)!.map(
             ([px, py]) => [cx - half + px, cy - half + py] as [number, number]
           );
           const deltas = points.slice(1).map(([px, py], i) => [px - points[i][0], py - points[i][1]]);
-          doc.lines(deltas, points[0][0], points[0][1], [1, 1], "F", true);
+          doc.lines(deltas, points[0][0], points[0][1], [1, 1], "FD", true);
         }
         doc.setTextColor(30, 30, 30);
         doc.text(text, margin + 14, legendY);

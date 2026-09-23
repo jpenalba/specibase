@@ -5,8 +5,7 @@ export type LayerShape =
   | "diamond"
   | "pentagon"
   | "hexagon"
-  | "star"
-  | "cross";
+  | "star";
 
 export const LAYER_SHAPES: LayerShape[] = [
   "circle",
@@ -16,7 +15,6 @@ export const LAYER_SHAPES: LayerShape[] = [
   "pentagon",
   "hexagon",
   "star",
-  "cross",
 ];
 
 export const DEFAULT_LAYER_SHAPE: LayerShape = "circle";
@@ -83,24 +81,6 @@ export function shapePolygonPoints(
         points.push([half + radius * Math.cos(angle), half + radius * Math.sin(angle)]);
       }
       return points;
-    }
-    case "cross": {
-      const ext = half - padding;
-      const arm = ext * 0.4;
-      return [
-        [half - arm, half - ext],
-        [half + arm, half - ext],
-        [half + arm, half - arm],
-        [half + ext, half - arm],
-        [half + ext, half + arm],
-        [half + arm, half + arm],
-        [half + arm, half + ext],
-        [half - arm, half + ext],
-        [half - arm, half + arm],
-        [half - ext, half + arm],
-        [half - ext, half - arm],
-        [half - arm, half - arm],
-      ];
     }
     case "circle":
       return null;

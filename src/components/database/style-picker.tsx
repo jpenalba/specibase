@@ -55,7 +55,10 @@ export function StylePicker({
                   onClick={() => onSetColor(c)}
                   className={cn(
                     "size-5 rounded-full border",
-                    c === color ? "border-foreground" : "border-transparent"
+                    // Always at least a faint border, not just when
+                    // selected — otherwise white (and near-white) swatches
+                    // disappear into the popover's own background.
+                    c === color ? "border-foreground" : "border-border"
                   )}
                   style={{ backgroundColor: c }}
                   aria-label={`Set color to ${c}`}
@@ -64,7 +67,7 @@ export function StylePicker({
               ))}
             </div>
             <p className="mb-1 text-[10px] font-medium text-muted-foreground">Shape</p>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {LAYER_SHAPES.map((s) => (
                 <button
                   key={s}
