@@ -18,6 +18,8 @@ import { DEFAULT_OPTIONAL_KEYS, getVisibleColumns } from "@/lib/fields";
 import { renderMarkdownToPdf, renderParagraph } from "@/lib/markdown-pdf";
 import { detailTableToAutoTableRows, samplesToAutoTableRows } from "@/lib/csv";
 import { formatTimestampDisplay } from "@/lib/date-format";
+import { formatToDDMMYYYY } from "@/lib/dates";
+import { parseCollaborators } from "@/lib/collaborators";
 import { SampleMap, SampleMapHandle, CapturedMapImage } from "@/components/database/sample-map";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -153,6 +155,19 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
     layer: ReturnType<typeof buildProjectMapLayer>;
   } | null>(null);
 
+  // Polls for the hidden map's ref to become available after mounting it —
+  // a state update made outside a React event handler (as this dialog's
+  // async compile flow does) isn't guaranteed to have flushed/committed by
+  // the very next line, so waiting a fixed single tick isn't reliable.
+  async function waitForMapHandle(timeoutMs = 8000): Promise<SampleMapHandle | null> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (mapHandleRef.current) return mapHandleRef.current;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    return mapHandleRef.current;
+  }
+
   // loadingLists starts true and is never reset back to true on a later
   // open — same convention as the Samples page's own load() — so this
   // stays a plain callback with no synchronous setState before the fetch.
@@ -229,10 +244,19 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
     );
 
     setMapExportProps({ samples: tableSamples, layer });
-    // Let React mount the hidden map before we start polling its ref.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await mapHandleRef.current?.waitUntilIdle();
-    const captured = (await mapHandleRef.current?.captureMapImage()) ?? null;
+    // setMapExportProps triggers a render outside any event handler, so
+    // there's no guarantee it's flushed and committed by the time this
+    // async function's next line runs — poll for the ref rather than
+    // assuming one microtask/tick is enough (a single missed tick here is
+    // exactly what used to make this silently resolve to "couldn't
+    // capture the map").
+    const handle = await waitForMapHandle();
+    if (!handle) {
+      setMapExportProps(null);
+      return null;
+    }
+    await handle.waitUntilIdle();
+    const captured = await handle.captureMapImage();
     setMapExportProps(null);
     return captured;
   }
@@ -251,19 +275,51 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
         | undefined;
       if (!project) throw new Error("Project not found");
 
+      // Title + metadata lead straight into the Info section on this same
+      // first page — no separate, mostly-blank cover page.
+      let pageHeight = doc.internal.pageSize.getHeight();
+      const maxWidth = doc.internal.pageSize.getWidth() - margin * 2;
+
       doc.setFontSize(20);
       doc.setFont("helvetica", "bold");
       doc.text(project.name, margin, margin + 10);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
+
+      let y = margin + 32;
+      doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text(`Exported ${new Date().toLocaleString()}`, margin, margin + 28);
+      doc.text(`Exported ${new Date().toLocaleString()}`, margin, y);
       doc.setTextColor(0);
+      y += 18;
+
+      const metaLines: string[] = [
+        `Status: ${project.status === "completed" ? "Completed" : "In progress"}`,
+      ];
+      if (project.start_date) metaLines.push(`Start date: ${formatToDDMMYYYY(project.start_date)}`);
+      if (project.owner) metaLines.push(`Owner: ${project.owner}`);
+      if (project.focal_group) metaLines.push(`Focal species/group: ${project.focal_group}`);
+      if (project.focal_region) metaLines.push(`Focal region: ${project.focal_region}`);
+      const collaborators = parseCollaborators(project.collaborators);
+      if (collaborators.length > 0) metaLines.push(`Collaborators: ${collaborators.join(", ")}`);
+
+      doc.setFontSize(10);
+      for (const line of metaLines) {
+        if (y + 14 > pageHeight - margin) {
+          doc.addPage("a4", "portrait");
+          pageHeight = doc.internal.pageSize.getHeight();
+          y = margin;
+        }
+        doc.text(line, margin, y);
+        y += 14;
+      }
+      y += 8;
+      doc.setDrawColor(210);
+      doc.line(margin, y, margin + maxWidth, y);
+      doc.setDrawColor(0);
+      y += 24;
 
       if (includeInfo) {
-        const { pageHeight, maxWidth } = startSection(doc, "portrait", margin);
         const mdOpts = { x: margin, maxWidth, pageHeight, marginBottom: margin };
-        let y = margin + 10;
 
         function heading(title: string) {
           if (y + 24 > pageHeight - margin) {
