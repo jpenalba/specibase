@@ -41,6 +41,8 @@ export default function DatabasePage() {
   const [gbifLayers, setGbifLayers] = useState<GbifSpeciesLayer[]>([]);
   const [visibleGbifIds, setVisibleGbifIds] = useState<Set<string>>(new Set());
   const [showAddSamples, setShowAddSamples] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
   const { selected, toggle } = useOptionalFields();
   const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
 
@@ -72,6 +74,31 @@ export default function DatabasePage() {
       .catch(() => setProjectsError("Couldn't reach the server."));
   }, []);
 
+  // Collections are their own map layer group (see LayerPanel's per-type
+  // folders) — kept as its own callback so a taxonomy backfill can refresh
+  // just this pool without re-fetching samples/projects too.
+  const loadCollections = useCallback((onDone?: () => void) => {
+    Promise.all([
+      fetch("/api/collections").then((res) => res.json()),
+      fetch("/api/collections/samples").then((res) => res.json()),
+    ])
+      .then(([collectionsData, samplesData]) => {
+        if (collectionsData.errors?.length > 0) {
+          setCollectionsError(collectionsData.errors.join(" "));
+          return;
+        }
+        if (samplesData.errors?.length > 0) {
+          setCollectionsError(samplesData.errors.join(" "));
+          return;
+        }
+        setCollectionsError(null);
+        setCollections(collectionsData.collections ?? []);
+        setCollectionSamples(samplesData.samples ?? []);
+      })
+      .catch(() => setCollectionsError("Couldn't reach the server."))
+      .finally(() => onDone?.());
+  }, []);
+
   useEffect(() => {
     loadSamplesAndProjects();
 
@@ -89,34 +116,39 @@ export default function DatabasePage() {
         if (!cancelled) setGbifError("Couldn't reach the server.");
       });
 
-    // Also independent — collections are their own map layer group (see
-    // LayerPanel's per-type folders) and shouldn't block anything above.
-    Promise.all([
-      fetch("/api/collections").then((res) => res.json()),
-      fetch("/api/collections/samples").then((res) => res.json()),
-    ])
-      .then(([collectionsData, samplesData]) => {
-        if (cancelled) return;
-        if (collectionsData.errors?.length > 0) {
-          setCollectionsError(collectionsData.errors.join(" "));
-          return;
-        }
-        if (samplesData.errors?.length > 0) {
-          setCollectionsError(samplesData.errors.join(" "));
-          return;
-        }
-        setCollectionsError(null);
-        setCollections(collectionsData.collections ?? []);
-        setCollectionSamples(samplesData.samples ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setCollectionsError("Couldn't reach the server.");
-      });
+    loadCollections();
 
     return () => {
       cancelled = true;
     };
-  }, [loadSamplesAndProjects]);
+  }, [loadSamplesAndProjects, loadCollections]);
+
+  async function runTaxonomyBackfill() {
+    setBackfilling(true);
+    setBackfillMessage(null);
+    try {
+      const res = await fetch("/api/gbif/backfill-taxonomy", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setBackfillMessage(data.errors?.join(" ") ?? "Couldn't run the backfill.");
+        return;
+      }
+      const total = data.samplesUpdated + data.collectionSamplesUpdated;
+      const unmatched = data.unmatchedSpecies?.length ?? 0;
+      setBackfillMessage(
+        `Filled in taxonomy for ${total} sample${total === 1 ? "" : "s"} from GBIF` +
+          (unmatched > 0
+            ? `; ${unmatched} species had no confident GBIF match and were left blank.`
+            : ".")
+      );
+      loadSamplesAndProjects();
+      loadCollections();
+    } catch {
+      setBackfillMessage("Couldn't reach the server.");
+    } finally {
+      setBackfilling(false);
+    }
+  }
 
   const { root, children } = useMemo(
     () => buildLayers(samples, projects, links, layerStyles),
@@ -244,14 +276,25 @@ export default function DatabasePage() {
             click a layer&apos;s name to view its samples in the table below.
           </p>
         </div>
-        <Button variant="outline" onClick={() => setShowAddSamples((v) => !v)}>
-          {showAddSamples ? "Hide add samples" : "Add samples"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={runTaxonomyBackfill} disabled={backfilling}>
+            {backfilling ? "Backfilling taxonomy..." : "Backfill taxonomy from GBIF"}
+          </Button>
+          <Button variant="outline" onClick={() => setShowAddSamples((v) => !v)}>
+            {showAddSamples ? "Hide add samples" : "Add samples"}
+          </Button>
+        </div>
       </div>
 
       <div className={showAddSamples ? "" : "hidden"}>
         <AddSamplesPanel onUploaded={loadSamplesAndProjects} />
       </div>
+
+      {backfillMessage && (
+        <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
+          {backfillMessage}
+        </div>
+      )}
 
       {samplesError && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">

@@ -8,9 +8,11 @@ import {
 } from "@/lib/fields";
 import { DATE_FORMAT_LABEL } from "@/lib/dates";
 import { RawRow, validateRow } from "@/lib/validation";
+import { GbifClassification } from "@/lib/gbif";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SpeciesInput } from "./species-input";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +42,18 @@ export function AddSampleDialog({
 
   function update(key: string, value: string) {
     setValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  // Only fills columns GBIF actually returned, and never overwrites a
+  // value the person already typed by hand for this species.
+  function applyGbifMatch(match: GbifClassification | null) {
+    setValues((prev) => ({
+      ...prev,
+      genus: prev.genus || match?.genus || prev.genus,
+      family: prev.family || match?.family || prev.family,
+      taxon_order: prev.taxon_order || match?.order || prev.taxon_order,
+      taxon_class: prev.taxon_class || match?.class || prev.taxon_class,
+    }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -82,11 +96,20 @@ export function AddSampleDialog({
             {REQUIRED_FIELDS.map((field) => (
               <div key={field.key} className="grid gap-1.5">
                 <Label htmlFor={field.key}>{field.label} *</Label>
-                <Input
-                  id={field.key}
-                  value={values[field.key] ?? ""}
-                  onChange={(e) => update(field.key, e.target.value)}
-                />
+                {field.key === "species" ? (
+                  <SpeciesInput
+                    id={field.key}
+                    value={values[field.key] ?? ""}
+                    onChange={(value) => update(field.key, value)}
+                    onResolved={applyGbifMatch}
+                  />
+                ) : (
+                  <Input
+                    id={field.key}
+                    value={values[field.key] ?? ""}
+                    onChange={(e) => update(field.key, e.target.value)}
+                  />
+                )}
               </div>
             ))}
           </div>

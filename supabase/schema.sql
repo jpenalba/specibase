@@ -23,6 +23,14 @@ create table if not exists samples (
   locality text,
 
   -- optional
+  -- Auto-filled from a GBIF species/match lookup when species resolves
+  -- there (see src/lib/gbif.ts); left blank for anything GBIF can't place.
+  -- "order"/"class" avoided as bare names since order is a reserved word.
+  subspecies text,
+  genus text,
+  family text,
+  taxon_order text,
+  taxon_class text,
   collection_date date,
   country text,
   additional_number text,
@@ -105,6 +113,11 @@ create table if not exists collection_samples (
   longitude double precision check (longitude between -180 and 180),
   locality text,
 
+  subspecies text,
+  genus text,
+  family text,
+  taxon_order text,
+  taxon_class text,
   collection_date date,
   country text,
   additional_number text,

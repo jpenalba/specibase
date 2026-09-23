@@ -2,6 +2,7 @@ import { getSupabase } from "./supabase";
 import { OPTIONAL_FIELDS, FieldDef } from "./fields";
 import { RawRow, validateRow } from "./validation";
 import { parseDDMMYYYY, formatToDDMMYYYY } from "./dates";
+import { matchGbifSpeciesBatch, applyGbifClassificationToRow } from "./gbif";
 
 const TABLE = "samples";
 
@@ -205,13 +206,16 @@ export async function insertSamplesBulk(
     return { inserted: [], skipped: [], duplicateIds: [...duplicateIds] };
   }
 
+  // One GBIF lookup per distinct species in the batch, not per row.
+  const taxonomyByName = await matchGbifSpeciesBatch(rows.map((r) => r.species ?? ""));
+
   const inserted: SampleRecord[] = [];
   const skipped: { row: number; errors: string[] }[] = [];
 
   // Inserted one at a time (rather than a single bulk write) so each
   // row is independently validated and a bad row doesn't sink the batch.
   for (const [index, row] of rows.entries()) {
-    const result = await insertSample(row);
+    const result = await insertSample(applyGbifClassificationToRow(row, taxonomyByName));
     if (result.ok) {
       inserted.push(result.sample);
     } else {

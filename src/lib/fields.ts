@@ -28,6 +28,31 @@ export const LOCATION_FIELDS: FieldDef[] = [
 // Add more entries here as the lab's workflow needs grow — nothing
 // else in the app needs to change to pick up a new optional field.
 export const OPTIONAL_FIELDS: FieldDef[] = [
+  {
+    key: "subspecies",
+    label: "Subspecies",
+    type: "text",
+    description: "Free text — GBIF's infraspecific coverage is patchy, so this is never required to match",
+  },
+  {
+    key: "genus",
+    label: "Genus",
+    type: "text",
+    description: "Auto-filled from GBIF when Species is matched there; editable by hand otherwise",
+  },
+  { key: "family", label: "Family", type: "text", description: "Auto-filled from GBIF when Species is matched there" },
+  {
+    key: "taxon_order",
+    label: "Order",
+    type: "text",
+    description: "Auto-filled from GBIF when Species is matched there",
+  },
+  {
+    key: "taxon_class",
+    label: "Class",
+    type: "text",
+    description: "Auto-filled from GBIF when Species is matched there",
+  },
   { key: "collection_date", label: "Collection date", type: "date" },
   { key: "country", label: "Country", type: "text" },
   {

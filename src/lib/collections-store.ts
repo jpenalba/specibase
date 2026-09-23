@@ -2,6 +2,7 @@ import { getSupabase } from "./supabase";
 import { RawRow, validateRow } from "./validation";
 import { normalizeDatesForStorage } from "./samples-store";
 import { CollectionType } from "./collection-types";
+import { matchGbifSpeciesBatch, applyGbifClassificationToRow } from "./gbif";
 
 const COLLECTIONS_TABLE = "collections";
 const SAMPLES_TABLE = "collection_samples";
@@ -227,11 +228,17 @@ export async function insertCollectionSamplesBulk(
     return { inserted: [], skipped: [], duplicateIds: [...duplicateIds] };
   }
 
+  // One GBIF lookup per distinct species in the batch, not per row.
+  const taxonomyByName = await matchGbifSpeciesBatch(rows.map((r) => r.species ?? ""));
+
   const inserted: CollectionSample[] = [];
   const skipped: { row: number; errors: string[] }[] = [];
 
   for (const [index, row] of rows.entries()) {
-    const result = await insertCollectionSample(collectionId, row);
+    const result = await insertCollectionSample(
+      collectionId,
+      applyGbifClassificationToRow(row, taxonomyByName)
+    );
     if (result.ok) {
       inserted.push(result.sample);
     } else {

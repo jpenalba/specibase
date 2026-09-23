@@ -1,3 +1,5 @@
+import { RawRow } from "./validation";
+
 // GBIF's public occurrence-density tile API — no API key required, and it
 // aggregates/renders on GBIF's own servers, so the browser fetches map
 // tiles directly from GBIF the same way it already does for the Streets
@@ -89,4 +91,99 @@ export async function searchGbifSpecies(query: string): Promise<GbifSpeciesSugge
       status: typeof item.status === "string" ? item.status : undefined,
     }))
     .filter((item) => Number.isFinite(item.key) && item.key > 0);
+}
+
+// The classification fields a matched species can fill in automatically —
+// deliberately just the four ranks the app tracks as their own columns
+// (see fields.ts), not GBIF's full kingdom/phylum/etc. hierarchy.
+export type GbifClassification = {
+  usageKey: number;
+  scientificName: string;
+  canonicalName: string;
+  rank?: string;
+  genus?: string;
+  family?: string;
+  order?: string;
+  class?: string;
+  confidence: number;
+  matchType: string;
+};
+
+// Resolves a free-typed (or GBIF-suggested) name to GBIF's backbone
+// taxonomy in one call — used both for the one-at-a-time species picker
+// (once someone picks a suggestion) and for bulk CSV import/backfill,
+// where there's a plain string and no prior suggest step. Returns null
+// for anything GBIF can't confidently place (matchType "NONE", or no
+// usageKey at all) — callers leave the taxonomy columns blank rather than
+// guessing, since an unmatched name (an undescribed species, a
+// morphospecies code) is an expected, valid case here, not an error.
+export async function matchGbifSpecies(name: string): Promise<GbifClassification | null> {
+  const url = `https://api.gbif.org/v1/species/match?name=${encodeURIComponent(name)}&verbose=false`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`GBIF species match failed (${res.status})`);
+  }
+  const data: unknown = await res.json();
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+
+  const usageKey = Number(record.usageKey);
+  if (record.matchType === "NONE" || !Number.isFinite(usageKey) || usageKey <= 0) {
+    return null;
+  }
+
+  const str = (key: string): string | undefined =>
+    typeof record[key] === "string" ? (record[key] as string) : undefined;
+
+  return {
+    usageKey,
+    scientificName: str("scientificName") ?? name,
+    canonicalName: str("canonicalName") ?? str("scientificName") ?? name,
+    rank: str("rank"),
+    genus: str("genus"),
+    family: str("family"),
+    order: str("order"),
+    class: str("class"),
+    confidence: typeof record.confidence === "number" ? record.confidence : 0,
+    matchType: typeof record.matchType === "string" ? record.matchType : "NONE",
+  };
+}
+
+// Looks up GBIF classification once per distinct species name across a
+// whole CSV batch, rather than once per row — a hundred rows of the same
+// species costs one GBIF call, not a hundred. A failed lookup for one name
+// (network hiccup, GBIF down) just leaves that name unmatched rather than
+// failing the rest of the batch.
+export async function matchGbifSpeciesBatch(
+  names: string[]
+): Promise<Map<string, GbifClassification | null>> {
+  const distinct = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  const entries = await Promise.all(
+    distinct.map(async (name) => {
+      try {
+        return [name, await matchGbifSpecies(name)] as const;
+      } catch {
+        return [name, null] as const;
+      }
+    })
+  );
+  return new Map(entries);
+}
+
+// Fills genus/family/taxon_order/taxon_class from a resolved match, but
+// only where the row doesn't already carry an explicit value for that
+// column — e.g. a CSV that already supplied its own Genus column wins.
+export function applyGbifClassificationToRow(
+  row: RawRow,
+  taxonomyByName: Map<string, GbifClassification | null>
+): RawRow {
+  const match = taxonomyByName.get(row.species?.trim() ?? "");
+  if (!match) return row;
+  return {
+    ...row,
+    genus: row.genus?.trim() || match.genus || row.genus,
+    family: row.family?.trim() || match.family || row.family,
+    taxon_order: row.taxon_order?.trim() || match.order || row.taxon_order,
+    taxon_class: row.taxon_class?.trim() || match.class || row.taxon_class,
+  };
 }
