@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 
 const LINKS = [
+  { href: "/", label: "Home" },
   { href: "/projects", label: "Projects" },
   { href: "/database", label: "Database" },
   { href: "/collections", label: "Collections" },
@@ -17,7 +18,7 @@ export function NavBar() {
   return (
     <nav className="border-b border-border">
       <div className="mx-auto flex max-w-6xl items-center gap-1 px-6 py-3 sm:px-10">
-        <span className="mr-4 flex items-center gap-2">
+        <Link href="/" className="mr-4 flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element -- a
               small, static nav-bar icon isn't worth next/image's overhead */}
           <img
@@ -28,11 +29,13 @@ export function NavBar() {
             className="theme-invert"
           />
           <span className="text-xl font-semibold">Specibase</span>
-        </span>
+        </Link>
         {LINKS.map((link) => {
           // Exact match everywhere except Projects, where a nested route
           // (a specific project's own tabs) should still show it active —
           // the primary tab now, with the most nested navigation under it.
+          // Home is also exact — every other route starts with its own
+          // segment, so "/" never spuriously matches as a prefix.
           const active =
             link.href === "/projects"
               ? pathname === link.href || pathname.startsWith(`${link.href}/`)
