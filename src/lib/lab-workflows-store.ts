@@ -8,6 +8,7 @@ const ENTRIES_TABLE = "lab_workflow_entries";
 const CUSTOM_COLUMNS_TABLE = "lab_workflow_custom_columns";
 const CUSTOM_VALUES_TABLE = "lab_workflow_custom_values";
 const DETAIL_COLUMNS_TABLE = "lab_workflow_detail_columns";
+const DETAIL_ROWS_TABLE = "lab_workflow_detail_rows";
 const DETAIL_VALUES_TABLE = "lab_workflow_detail_values";
 
 export type WorkflowStatus = "in_progress" | "completed";
@@ -203,7 +204,9 @@ export async function listEnrolledSamples(workflowId: string): Promise<WorkflowS
 // A newly enrolled sample starts with no entries at all, which the grid
 // and detail views treat as "not started" (grey) for every step — the
 // lab ticks each step on as it's actually done, rather than starting
-// from a fully-ticked row and unticking what doesn't apply.
+// from a fully-ticked row and unticking what doesn't apply. Also gives it
+// its Detailed-view attempt-1 row (see LabWorkflowDetailRow) — further
+// attempts only ever come from duplicating a row, never from re-enrolling.
 export async function enrollSamples(workflowId: string, sampleIds: string[]): Promise<void> {
   if (sampleIds.length === 0) return;
   const rows = sampleIds.map((sampleId) => ({ workflow_id: workflowId, sample_id: sampleId }));
@@ -211,11 +214,20 @@ export async function enrollSamples(workflowId: string, sampleIds: string[]): Pr
     .from(SAMPLES_TABLE)
     .upsert(rows, { onConflict: "workflow_id,sample_id", ignoreDuplicates: true });
   if (error) throw new Error(error.message);
+
+  const { error: rowsError } = await getSupabase()
+    .from(DETAIL_ROWS_TABLE)
+    .upsert(
+      sampleIds.map((sampleId) => ({ workflow_id: workflowId, sample_id: sampleId, attempt_number: 1 })),
+      { onConflict: "workflow_id,sample_id,attempt_number", ignoreDuplicates: true }
+    );
+  if (rowsError) throw new Error(rowsError.message);
 }
 
 // Also clears any entries already logged for these samples on this
-// workflow's steps — re-enrolling later starts clean rather than silently
-// resurrecting old ticks the lab thought they'd removed.
+// workflow's steps, and every Detailed-view row (all attempts, cascading
+// to their values) — re-enrolling later starts clean rather than silently
+// resurrecting old ticks or redo history the lab thought they'd removed.
 export async function unenrollSamples(workflowId: string, sampleIds: string[]): Promise<void> {
   if (sampleIds.length === 0) return;
   const supabase = getSupabase();
@@ -230,6 +242,13 @@ export async function unenrollSamples(workflowId: string, sampleIds: string[]): 
       .in("sample_id", sampleIds);
     if (entriesError) throw new Error(entriesError.message);
   }
+
+  const { error: rowsError } = await supabase
+    .from(DETAIL_ROWS_TABLE)
+    .delete()
+    .eq("workflow_id", workflowId)
+    .in("sample_id", sampleIds);
+  if (rowsError) throw new Error(rowsError.message);
 
   const { error } = await supabase
     .from(SAMPLES_TABLE)
@@ -398,10 +417,18 @@ export type LabWorkflowDetailColumn = {
   kind: DetailColumnKind;
 };
 
+export type LabWorkflowDetailRow = {
+  id: string;
+  workflow_id: string;
+  sample_id: string;
+  created_at: string;
+  attempt_number: number;
+};
+
 export type LabWorkflowDetailValue = {
   id: string;
   column_id: string;
-  sample_id: string;
+  row_id: string;
   updated_at: string;
   value: string | null;
 };
@@ -470,6 +497,85 @@ export async function deleteDetailColumn(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+// Every row (every attempt at every sample) of this workflow's Detailed
+// view — the table renders one line per row, grouping by sample_id and
+// ordering by attempt_number itself.
+export async function listDetailRows(workflowId: string): Promise<LabWorkflowDetailRow[]> {
+  const { data, error } = await getSupabase()
+    .from(DETAIL_ROWS_TABLE)
+    .select("*")
+    .eq("workflow_id", workflowId)
+    .order("attempt_number", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LabWorkflowDetailRow[];
+}
+
+async function getDetailRow(id: string): Promise<LabWorkflowDetailRow | null> {
+  const { data, error } = await getSupabase()
+    .from(DETAIL_ROWS_TABLE)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as LabWorkflowDetailRow | null;
+}
+
+// "Duplicate row" — a redo of a sample that needs to be run again. Copies
+// every value already entered on the source row so the new attempt starts
+// as a snapshot of it rather than blank, since most of what changes on a
+// redo (Status, a reading) is a small edit on top of what's already there.
+export async function duplicateDetailRow(
+  rowId: string
+): Promise<{ row: LabWorkflowDetailRow; values: LabWorkflowDetailValue[] }> {
+  const source = await getDetailRow(rowId);
+  if (!source) throw new Error("Row not found");
+
+  const siblingRows = await getSupabase()
+    .from(DETAIL_ROWS_TABLE)
+    .select("attempt_number")
+    .eq("workflow_id", source.workflow_id)
+    .eq("sample_id", source.sample_id);
+  if (siblingRows.error) throw new Error(siblingRows.error.message);
+  const nextAttempt =
+    Math.max(...(siblingRows.data ?? []).map((r) => r.attempt_number as number), 0) + 1;
+
+  const { data: newRow, error: rowError } = await getSupabase()
+    .from(DETAIL_ROWS_TABLE)
+    .insert({ workflow_id: source.workflow_id, sample_id: source.sample_id, attempt_number: nextAttempt })
+    .select()
+    .single();
+  if (rowError) throw new Error(rowError.message);
+
+  const { data: sourceValues, error: valuesError } = await getSupabase()
+    .from(DETAIL_VALUES_TABLE)
+    .select("*")
+    .eq("row_id", rowId);
+  if (valuesError) throw new Error(valuesError.message);
+
+  const copies = (sourceValues ?? []).filter((v) => v.value !== null);
+  if (copies.length === 0) {
+    return { row: newRow as LabWorkflowDetailRow, values: [] };
+  }
+  const { data: newValues, error: copyError } = await getSupabase()
+    .from(DETAIL_VALUES_TABLE)
+    .insert(copies.map((v) => ({ column_id: v.column_id, row_id: newRow.id, value: v.value })))
+    .select();
+  if (copyError) throw new Error(copyError.message);
+  return { row: newRow as LabWorkflowDetailRow, values: (newValues ?? []) as LabWorkflowDetailValue[] };
+}
+
+// The attempt-1 row isn't removable here — it's tied to the sample's
+// enrollment and goes away only by unenrolling the sample. Only a
+// duplicate ("redo") row can be removed this way.
+export async function deleteDetailRow(id: string): Promise<void> {
+  const row = await getDetailRow(id);
+  if (row?.attempt_number === 1) {
+    throw new Error("The original row can't be removed — unenroll the sample instead");
+  }
+  const { error } = await getSupabase().from(DETAIL_ROWS_TABLE).delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 // Every detail value across every detail column of this workflow — same
 // "fetch the whole workflow's worth at once" approach as
 // listCustomValuesForWorkflow.
@@ -489,7 +595,7 @@ export async function listDetailValuesForWorkflow(
   return (data ?? []) as LabWorkflowDetailValue[];
 }
 
-export type DetailValueUpsertInput = { column_id: string; sample_id: string; value: string | null };
+export type DetailValueUpsertInput = { column_id: string; row_id: string; value: string | null };
 
 export async function upsertDetailValues(
   rows: DetailValueUpsertInput[]
@@ -500,7 +606,7 @@ export async function upsertDetailValues(
     .from(DETAIL_VALUES_TABLE)
     .upsert(
       rows.map((row) => ({ ...row, updated_at: now })),
-      { onConflict: "column_id,sample_id" }
+      { onConflict: "column_id,row_id" }
     )
     .select();
   if (error) throw new Error(error.message);

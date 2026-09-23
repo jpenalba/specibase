@@ -14,17 +14,27 @@ export function nextStatus(current: EntryStatus): EntryStatus {
 export const STATUS_LABELS: Record<EntryStatus, string> = {
   not_started: "Not started",
   in_progress: "In progress",
-  done: "Done",
+  done: "Completed",
   failed: "Failed",
 };
 
-// Solid dot fill per status — grid cells and the detail view's status
-// picker both use these so the color vocabulary stays in one place.
+// Solid dot fill per status — the Simple grid's tick cells use these so the
+// color vocabulary stays in one place.
 export const STATUS_DOT_CLASS: Record<EntryStatus, string> = {
   not_started: "bg-muted-foreground/40",
   in_progress: "bg-warning-foreground",
   done: "bg-success-foreground",
   failed: "bg-destructive",
+};
+
+// Colored pill per status — the Detailed view's Status column (a value the
+// eye needs to pick out of a whole row of plain text, unlike the Simple
+// grid's already-colored dots) uses these.
+export const STATUS_BADGE_CLASS: Record<EntryStatus, string> = {
+  not_started: "bg-muted text-muted-foreground",
+  in_progress: "bg-warning text-warning-foreground",
+  done: "bg-success text-success-foreground",
+  failed: "bg-destructive/15 text-destructive",
 };
 
 export const ALL_STATUSES: EntryStatus[] = ["not_started", "in_progress", "done", "failed"];

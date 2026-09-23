@@ -7,6 +7,7 @@ import {
   LabWorkflowCustomColumn,
   LabWorkflowCustomValue,
   LabWorkflowDetailColumn,
+  LabWorkflowDetailRow,
   LabWorkflowDetailValue,
   LabWorkflowEntry,
   LabWorkflowStep,
@@ -78,6 +79,7 @@ export function WorkflowSection({
   const [customColumns, setCustomColumns] = useState<LabWorkflowCustomColumn[]>([]);
   const [customValues, setCustomValues] = useState<LabWorkflowCustomValue[]>([]);
   const [detailColumns, setDetailColumns] = useState<LabWorkflowDetailColumn[]>([]);
+  const [detailRows, setDetailRows] = useState<LabWorkflowDetailRow[]>([]);
   const [detailValues, setDetailValues] = useState<LabWorkflowDetailValue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +116,7 @@ export function WorkflowSection({
         setCustomColumns(detail.customColumns ?? []);
         setCustomValues(detail.customValues ?? []);
         setDetailColumns(detail.detailColumns ?? []);
+        setDetailRows(detail.detailRows ?? []);
         setDetailValues(detail.detailValues ?? []);
       })
       .catch(() => setError("Couldn't reach the server."))
@@ -206,20 +209,21 @@ export function WorkflowSection({
   }
 
   // Detailed view's columns — same "held locally, dirty-tracked" approach
-  // as the Simple grid's custom values above.
-  function handleSaveDetailValues(columnId: string, edits: { sampleId: string; value: string }[]) {
+  // as the Simple grid's custom values above, keyed by row rather than
+  // sample since a sample can have more than one row (a redo).
+  function handleSaveDetailValues(columnId: string, edits: { rowId: string; value: string }[]) {
     if (edits.length === 0) return;
     setDetailValues((prev) => {
       let next = prev;
-      for (const { sampleId, value } of edits) {
-        const index = next.findIndex((v) => v.column_id === columnId && v.sample_id === sampleId);
+      for (const { rowId, value } of edits) {
+        const index = next.findIndex((v) => v.column_id === columnId && v.row_id === rowId);
         if (index === -1) {
           next = [
             ...next,
             {
-              id: `pending-${columnId}-${sampleId}`,
+              id: `pending-${columnId}-${rowId}`,
               column_id: columnId,
-              sample_id: sampleId,
+              row_id: rowId,
               updated_at: new Date().toISOString(),
               value,
             },
@@ -234,9 +238,43 @@ export function WorkflowSection({
     });
     setDirtyDetailValueKeys((prev) => {
       const next = new Set(prev);
-      for (const { sampleId } of edits) next.add(`${columnId}:${sampleId}`);
+      for (const { rowId } of edits) next.add(`${columnId}:${rowId}`);
       return next;
     });
+  }
+
+  // Duplicating or removing a row is structural (like Manage samples/steps/
+  // columns), not a value edit, so it takes effect immediately rather than
+  // waiting for Save.
+  async function handleDuplicateRow(row: LabWorkflowDetailRow) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/lab-workflows/${workflowId}/detail-rows/${row.id}/duplicate`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error();
+      load();
+    } catch {
+      setError("Couldn't duplicate that row — try again.");
+    }
+  }
+
+  async function handleDeleteRow(row: LabWorkflowDetailRow) {
+    if (
+      !window.confirm("Remove this redo row? Any values entered on it are deleted too. This can't be undone.")
+    ) {
+      return;
+    }
+    setError(null);
+    try {
+      const res = await fetch(`/api/lab-workflows/${workflowId}/detail-rows/${row.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+      load();
+    } catch {
+      setError("Couldn't remove that row — try again.");
+    }
   }
 
   async function handleSaveEdits() {
@@ -250,8 +288,8 @@ export function WorkflowSection({
         .filter((v) => dirtyValueKeys.has(`${v.column_id}:${v.sample_id}`))
         .map((v) => ({ column_id: v.column_id, sample_id: v.sample_id, value: v.value }));
       const detailValuePatches = detailValues
-        .filter((v) => dirtyDetailValueKeys.has(`${v.column_id}:${v.sample_id}`))
-        .map((v) => ({ column_id: v.column_id, sample_id: v.sample_id, value: v.value }));
+        .filter((v) => dirtyDetailValueKeys.has(`${v.column_id}:${v.row_id}`))
+        .map((v) => ({ column_id: v.column_id, row_id: v.row_id, value: v.value }));
 
       const requests: Promise<Response>[] = [];
       if (entryPatches.length > 0) {
@@ -432,10 +470,13 @@ export function WorkflowSection({
       ) : (
         <DetailTable
           samples={pageSamples}
+          rows={detailRows}
           columns={detailColumns}
           values={detailValues}
           editable={editMode}
           onSaveDetailValues={handleSaveDetailValues}
+          onDuplicateRow={handleDuplicateRow}
+          onDeleteRow={handleDeleteRow}
         />
       )}
 

@@ -5,6 +5,7 @@ import {
   listCustomColumns,
   listCustomValuesForWorkflow,
   listDetailColumns,
+  listDetailRows,
   listDetailValuesForWorkflow,
   listEnrolledSamples,
   listEntriesForWorkflow,
@@ -26,7 +27,7 @@ export async function GET(
     if (!workflow) {
       return NextResponse.json({ errors: ["Workflow not found"] }, { status: 404 });
     }
-    const [steps, links, entries, customColumns, customValues, detailColumns, detailValues] =
+    const [steps, links, entries, customColumns, customValues, detailColumns, detailRows, detailValues] =
       await Promise.all([
         listSteps(id),
         listEnrolledSamples(id),
@@ -34,6 +35,7 @@ export async function GET(
         listCustomColumns(id),
         listCustomValuesForWorkflow(id),
         listDetailColumns(id),
+        listDetailRows(id),
         listDetailValuesForWorkflow(id),
       ]);
     return NextResponse.json({
@@ -44,6 +46,7 @@ export async function GET(
       customColumns,
       customValues,
       detailColumns,
+      detailRows,
       detailValues,
     });
   } catch (error) {

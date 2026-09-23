@@ -10,11 +10,11 @@ function parseValues(body: unknown): DetailValueUpsertInput[] | { error: string 
   for (const raw of body) {
     if (!raw || typeof raw !== "object") return { error: "Invalid value" };
     const row = raw as Record<string, unknown>;
-    if (typeof row.column_id !== "string" || typeof row.sample_id !== "string") {
-      return { error: "Every value needs column_id and sample_id" };
+    if (typeof row.column_id !== "string" || typeof row.row_id !== "string") {
+      return { error: "Every value needs column_id and row_id" };
     }
     const value = typeof row.value === "string" ? row.value.trim() || null : null;
-    values.push({ column_id: row.column_id, sample_id: row.sample_id, value });
+    values.push({ column_id: row.column_id, row_id: row.row_id, value });
   }
   return values;
 }
