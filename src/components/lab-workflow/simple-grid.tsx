@@ -9,9 +9,12 @@ import {
 } from "@/lib/lab-workflows-store";
 import { SampleRecord } from "@/lib/samples-store";
 import { EntryStatus, nextStatus, STATUS_DOT_CLASS, STATUS_LABELS } from "@/lib/lab-workflow-status";
+import { incrementSeriesValue } from "@/lib/series-fill";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+type CustomValueEntry = { sampleId: string; value: string };
 
 type PaintedCell = { step_id: string; sample_id: string; status: EntryStatus };
 
@@ -33,7 +36,7 @@ export function SimpleGrid({
   customColumns,
   customValues,
   onCommit,
-  onSaveCustomValue,
+  onSaveCustomValues,
 }: {
   steps: LabWorkflowStep[];
   samples: SampleRecord[];
@@ -44,7 +47,8 @@ export function SimpleGrid({
   customColumns: LabWorkflowCustomColumn[];
   customValues: LabWorkflowCustomValue[];
   onCommit: (cells: PaintedCell[]) => void;
-  onSaveCustomValue: (columnId: string, sampleId: string, value: string) => void;
+  // Bulk so a fill-handle drag across many rows is one save, not one per row.
+  onSaveCustomValues: (columnId: string, entries: CustomValueEntry[]) => void;
 }) {
   const baseStatus = useMemo(() => {
     const map = new Map<string, EntryStatus>();
@@ -61,7 +65,7 @@ export function SimpleGrid({
   // Same "local override, cleared once the parent's own state reflects the
   // save" approach as the status dots' drag-paint overrides below — the
   // parent updates its custom-values state synchronously in
-  // onSaveCustomValue, so clearing the override immediately on blur never
+  // onSaveCustomValues, so clearing the override immediately on blur never
   // causes a visible flicker back to the old value.
   const [customOverrides, setCustomOverrides] = useState<Map<string, string>>(new Map());
 
@@ -78,12 +82,63 @@ export function SimpleGrid({
     const key = cellKey(columnId, sampleId);
     const value = customOverrides.get(key);
     if (value === undefined) return;
-    onSaveCustomValue(columnId, sampleId, value);
+    onSaveCustomValues(columnId, [{ sampleId, value }]);
     setCustomOverrides((prev) => {
       const next = new Map(prev);
       next.delete(key);
       return next;
     });
+  }
+
+  // Fill handle: drag the corner of a custom-column cell down (or up) across
+  // rows to fill a series, the way a spreadsheet's fill handle does. The
+  // dragged-over range is highlighted via `fillPreview`; the actual save is
+  // one bulk request on release, computed from the source cell's value so a
+  // reversed drag (dragging back up past the source) always recomputes
+  // cleanly rather than accumulating stale touches.
+  const fillDragRef = useRef<{ columnId: string; sourceIndex: number; currentIndex: number } | null>(
+    null
+  );
+  const [fillPreview, setFillPreview] = useState<{ columnId: string; from: number; to: number } | null>(
+    null
+  );
+
+  function startFillDrag(columnId: string, sourceIndex: number) {
+    const sourceValue = customValueFor(columnId, samples[sourceIndex].id);
+    const drag = { columnId, sourceIndex, currentIndex: sourceIndex };
+    fillDragRef.current = drag;
+    setFillPreview({ columnId, from: sourceIndex, to: sourceIndex });
+
+    function finish() {
+      fillDragRef.current = null;
+      setFillPreview(null);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (drag.currentIndex === drag.sourceIndex) return;
+      const step = drag.currentIndex > drag.sourceIndex ? 1 : -1;
+      const entries: CustomValueEntry[] = [];
+      for (
+        let i = drag.sourceIndex + step;
+        step > 0 ? i <= drag.currentIndex : i >= drag.currentIndex;
+        i += step
+      ) {
+        entries.push({
+          sampleId: samples[i].id,
+          value: incrementSeriesValue(sourceValue, i - drag.sourceIndex),
+        });
+      }
+      onSaveCustomValues(columnId, entries);
+    }
+
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  }
+
+  function updateFillDrag(columnId: string, index: number) {
+    const drag = fillDragRef.current;
+    if (!drag || drag.columnId !== columnId) return;
+    drag.currentIndex = index;
+    setFillPreview({ columnId, from: Math.min(drag.sourceIndex, index), to: Math.max(drag.sourceIndex, index) });
   }
 
   // Cells touched by the drag currently in progress, painted immediately
@@ -166,22 +221,46 @@ export function SimpleGrid({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {samples.map((sample) => (
+          {samples.map((sample, sampleIndex) => (
             <TableRow key={sample.id}>
               <TableCell className="sticky left-0 z-10 bg-card py-1 font-mono">
                 {sample.primary_identifier}
               </TableCell>
               <TableCell className="py-1 text-muted-foreground">{sample.species}</TableCell>
-              {customColumns.map((column) => (
-                <TableCell key={column.id} className="py-1">
-                  <Input
-                    className="h-7 min-w-28"
-                    value={customValueFor(column.id, sample.id)}
-                    onChange={(e) => handleCustomChange(column.id, sample.id, e.target.value)}
-                    onBlur={() => handleCustomBlur(column.id, sample.id)}
-                  />
-                </TableCell>
-              ))}
+              {customColumns.map((column) => {
+                const inFillRange =
+                  fillPreview?.columnId === column.id &&
+                  sampleIndex >= fillPreview.from &&
+                  sampleIndex <= fillPreview.to;
+                return (
+                  <TableCell key={column.id} className="py-1">
+                    <div
+                      className={cn(
+                        "group relative rounded-sm",
+                        inFillRange && "outline outline-2 outline-offset-1 outline-primary"
+                      )}
+                      onPointerEnter={() => updateFillDrag(column.id, sampleIndex)}
+                    >
+                      <Input
+                        className="h-7 min-w-28"
+                        value={customValueFor(column.id, sample.id)}
+                        onChange={(e) => handleCustomChange(column.id, sample.id, e.target.value)}
+                        onBlur={() => handleCustomBlur(column.id, sample.id)}
+                      />
+                      <div
+                        role="presentation"
+                        aria-hidden
+                        className="absolute -bottom-1 -right-1 size-2.5 cursor-crosshair rounded-[2px] border border-card bg-primary opacity-0 group-hover:opacity-100"
+                        style={{ touchAction: "none" }}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          startFillDrag(column.id, sampleIndex);
+                        }}
+                      />
+                    </div>
+                  </TableCell>
+                );
+              })}
               {steps.map((step) => {
                 const status = statusFor(step.id, sample.id);
                 return (

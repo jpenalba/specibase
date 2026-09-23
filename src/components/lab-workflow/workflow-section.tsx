@@ -79,6 +79,10 @@ export function WorkflowSection({
   const [view, setView] = useState<ViewMode>("simple");
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
   const [page, setPage] = useState(0);
+  // Manage samples / Edit steps / Manage columns are editing actions, not
+  // everyday ones — collapsed behind this toggle so the grid's toolbar
+  // stays out of the way until the user actually wants to change setup.
+  const [editMode, setEditMode] = useState(false);
 
   const load = useCallback(() => {
     fetch(`/api/lab-workflows/${workflowId}`)
@@ -156,30 +160,44 @@ export function WorkflowSection({
     }).catch(() => setError("Couldn't save that change — try again."));
   }
 
-  function handleSaveCustomValue(columnId: string, sampleId: string, value: string) {
+  // Bulk so a fill-handle drag across many rows in the Simple grid is one
+  // save, not one request per row.
+  function handleSaveCustomValues(columnId: string, edits: { sampleId: string; value: string }[]) {
+    if (edits.length === 0) return;
     setCustomValues((prev) => {
-      const index = prev.findIndex((v) => v.column_id === columnId && v.sample_id === sampleId);
-      if (index === -1) {
-        return [
-          ...prev,
-          {
-            id: `pending-${columnId}-${sampleId}`,
-            column_id: columnId,
-            sample_id: sampleId,
-            updated_at: new Date().toISOString(),
-            value,
-          },
-        ];
+      let next = prev;
+      for (const { sampleId, value } of edits) {
+        const index = next.findIndex((v) => v.column_id === columnId && v.sample_id === sampleId);
+        if (index === -1) {
+          next = [
+            ...next,
+            {
+              id: `pending-${columnId}-${sampleId}`,
+              column_id: columnId,
+              sample_id: sampleId,
+              updated_at: new Date().toISOString(),
+              value,
+            },
+          ];
+        } else {
+          const copy = next.slice();
+          copy[index] = { ...copy[index], value };
+          next = copy;
+        }
       }
-      const next = prev.slice();
-      next[index] = { ...next[index], value };
       return next;
     });
     fetch(`/api/lab-workflows/${workflowId}/custom-values`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ values: [{ column_id: columnId, sample_id: sampleId, value }] }),
-    }).catch(() => setError("Couldn't save that change — try again."));
+      body: JSON.stringify({
+        values: edits.map(({ sampleId, value }) => ({
+          column_id: columnId,
+          sample_id: sampleId,
+          value,
+        })),
+      }),
+    }).catch(() => setError("Couldn't save one or more changes — try again."));
   }
 
   if (loading) {
@@ -227,26 +245,37 @@ export function WorkflowSection({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <ManageSamplesDialog
-            workflowId={workflowId}
-            allSamples={allSamples}
-            enrolledIds={enrolledIds}
-            onSaved={load}
-            trigger={<Button variant="outline" size="sm">Manage samples</Button>}
-          />
-          <StepManagerDialog
-            workflowId={workflowId}
-            steps={steps}
-            entryCountByStepId={entryCountByStepId}
-            onSaved={load}
-            trigger={<Button variant="outline" size="sm">Edit steps</Button>}
-          />
-          <ManageColumnsDialog
-            workflowId={workflowId}
-            columns={customColumns}
-            onSaved={load}
-            trigger={<Button variant="outline" size="sm">Manage columns</Button>}
-          />
+          {editMode && (
+            <>
+              <ManageSamplesDialog
+                workflowId={workflowId}
+                allSamples={allSamples}
+                enrolledIds={enrolledIds}
+                onSaved={load}
+                trigger={<Button variant="outline" size="sm">Manage samples</Button>}
+              />
+              <StepManagerDialog
+                workflowId={workflowId}
+                steps={steps}
+                entryCountByStepId={entryCountByStepId}
+                onSaved={load}
+                trigger={<Button variant="outline" size="sm">Edit steps</Button>}
+              />
+              <ManageColumnsDialog
+                workflowId={workflowId}
+                columns={customColumns}
+                onSaved={load}
+                trigger={<Button variant="outline" size="sm">Manage columns</Button>}
+              />
+            </>
+          )}
+          <Button
+            variant={editMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => setEditMode((prev) => !prev)}
+          >
+            {editMode ? "Done" : "Edit"}
+          </Button>
         </div>
       </div>
 
@@ -274,7 +303,7 @@ export function WorkflowSection({
           customColumns={customColumns}
           customValues={customValues}
           onCommit={handleGridCommit}
-          onSaveCustomValue={handleSaveCustomValue}
+          onSaveCustomValues={handleSaveCustomValues}
         />
       ) : (
         <DetailedView
