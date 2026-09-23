@@ -1,9 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { OPTIONAL_FIELDS } from "@/lib/fields";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
+// Bare checkbox grid — used directly inside TemplateDialog, which is
+// already its own modal, so the grid doesn't need collapsing again there.
+// Everywhere else, use FieldPickerButton below instead.
 export function FieldPicker({
   selected,
   onToggle,
@@ -32,5 +45,40 @@ export function FieldPicker({
         </div>
       ))}
     </div>
+  );
+}
+
+// Collapses the field picker behind a small button — with as many optional
+// fields as the app now has, always showing the full checklist inline (the
+// Database page, a project's Samples tab, the Add samples panel) ate too
+// much vertical space. Opens a dialog on demand instead.
+export function FieldPickerButton({
+  selected,
+  onToggle,
+}: {
+  selected: string[];
+  onToggle: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          Columns{selected.length > 0 ? ` (${selected.length})` : ""}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Table columns</DialogTitle>
+          <DialogDescription>
+            Tick which optional fields to show — the same set is used for the CSV template.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-y-auto pr-1">
+          <FieldPicker selected={selected} onToggle={onToggle} />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -14,7 +14,7 @@ import { MarkerStyle } from "@/lib/project-marker-styles-store";
 import { buildProjectMapLayer, resolveCategoryStyles } from "@/lib/marker-style";
 import { SampleMap } from "@/components/database/sample-map";
 import { SampleTable } from "@/components/samples/sample-table";
-import { FieldPicker } from "@/components/samples/field-picker";
+import { FieldPickerButton } from "@/components/samples/field-picker";
 import { SamplePicker } from "@/components/projects/sample-picker";
 import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
 import { MarkerStylePanel } from "@/components/projects/marker-style-panel";
@@ -319,7 +319,7 @@ export default function ProjectSamplesPage() {
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={tableSamples.length === 0}>
             Export CSV
           </Button>
-          <FieldPicker selected={selected} onToggle={toggle} />
+          <FieldPickerButton selected={selected} onToggle={toggle} />
           {!editMode && (
             <Button
               variant="outline"

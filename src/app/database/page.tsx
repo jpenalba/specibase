@@ -14,7 +14,7 @@ import { useOptionalFields } from "@/lib/use-optional-fields";
 import { SampleMap } from "@/components/database/sample-map";
 import { LayerPanel } from "@/components/database/layer-panel";
 import { SampleTable } from "@/components/samples/sample-table";
-import { FieldPicker } from "@/components/samples/field-picker";
+import { FieldPickerButton } from "@/components/samples/field-picker";
 import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
 import { Button } from "@/components/ui/button";
 
@@ -384,7 +384,7 @@ export default function DatabasePage() {
           </Button>
         </div>
         <div className="flex items-center gap-3">
-          <FieldPicker selected={selected} onToggle={toggle} />
+          <FieldPickerButton selected={selected} onToggle={toggle} />
           {!editMode && (
             <Button
               variant="outline"

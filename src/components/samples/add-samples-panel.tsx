@@ -8,7 +8,7 @@ import { StagingTable, StagedSample } from "@/components/samples/staging-table";
 import { AddSampleDialog } from "@/components/samples/add-sample-dialog";
 import { TemplateDialog } from "@/components/samples/template-dialog";
 import { ImportDialog } from "@/components/samples/import-dialog";
-import { FieldPicker } from "@/components/samples/field-picker";
+import { FieldPickerButton } from "@/components/samples/field-picker";
 import { ProjectPicker, ProjectSelection } from "@/components/samples/project-picker";
 import { Button } from "@/components/ui/button";
 import {
@@ -132,6 +132,7 @@ export function AddSamplesPanel({
           {staged.length === 1 ? "" : "s"} waiting.
         </p>
         <div className="flex flex-wrap gap-2">
+          <FieldPickerButton selected={selected} onToggle={toggle} />
           <ImportDialog takenIdentifiers={takenIdentifiers} onStage={stageMany} />
           <TemplateDialog selected={selected} onToggle={toggle} />
           <AddSampleDialog
@@ -141,19 +142,6 @@ export function AddSamplesPanel({
           />
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Table columns</CardTitle>
-          <CardDescription>
-            Tick which optional fields to show here — the same set is used for the CSV
-            template.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FieldPicker selected={selected} onToggle={toggle} />
-        </CardContent>
-      </Card>
 
       <StagingTable staged={staged} visibleOptionalKeys={selected} onRemove={removeStaged} />
 
