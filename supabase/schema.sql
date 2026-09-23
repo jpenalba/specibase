@@ -416,6 +416,23 @@ create table if not exists bio_workflow_detail_values (
   unique (column_id, row_id)
 );
 
+-- Field/lab/bioinformatic/other protocols — each either an uploaded PDF or
+-- (eventually) built directly in Specibase; see
+-- supabase/migrations/0021_protocols.sql.
+create table if not exists protocols (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+
+  name text not null,
+  description text,
+  date_added date not null default current_date,
+  protocol_type text not null default 'other'
+    check (protocol_type in ('field', 'lab', 'bioinformatic', 'other')),
+  source_type text not null check (source_type in ('pdf', 'built')),
+  pdf_url text,
+  pdf_filename text
+);
+
 create index if not exists bio_workflow_steps_workflow_id_idx on bio_workflow_steps (workflow_id);
 create index if not exists bio_workflow_samples_sample_id_idx on bio_workflow_samples (sample_id);
 create index if not exists bio_workflow_entries_sample_id_idx on bio_workflow_entries (sample_id);
@@ -456,10 +473,16 @@ alter table bio_workflow_detail_rows enable row level security;
 alter table bio_workflow_detail_values enable row level security;
 alter table project_bio_notes_blocks enable row level security;
 alter table project_marker_styles enable row level security;
+alter table protocols enable row level security;
 
 -- Public bucket for images inserted into a project's Background markdown
 -- (see src/app/api/projects/[id]/background/images) — public because the
 -- app has no per-user auth yet, same reasoning as everything else here.
 insert into storage.buckets (id, name, public)
 values ('project-images', 'project-images', true)
+on conflict (id) do nothing;
+
+-- Public bucket for uploaded protocol PDFs (see src/app/api/protocols/upload).
+insert into storage.buckets (id, name, public)
+values ('protocol-files', 'protocol-files', true)
 on conflict (id) do nothing;
