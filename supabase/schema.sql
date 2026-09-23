@@ -189,6 +189,21 @@ create table if not exists project_references (
 
 create index if not exists project_references_project_id_idx on project_references (project_id);
 
+-- "Bioinformatic notes" tab: a notebook of titled, dated markdown blocks.
+-- See supabase/migrations/0015_project_bio_notes_blocks.sql.
+create table if not exists project_bio_notes_blocks (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  position integer not null,
+  title text not null,
+  content text not null default ''
+);
+
+create index if not exists project_bio_notes_blocks_project_id_idx on project_bio_notes_blocks (project_id);
+
 -- Custom, free-text columns on a workflow's Simple grid (e.g. an
 -- extraction or library name) — see
 -- supabase/migrations/0011_lab_workflow_custom_columns.sql.
@@ -397,6 +412,7 @@ alter table bio_workflow_custom_values enable row level security;
 alter table bio_workflow_detail_columns enable row level security;
 alter table bio_workflow_detail_rows enable row level security;
 alter table bio_workflow_detail_values enable row level security;
+alter table project_bio_notes_blocks enable row level security;
 
 -- Public bucket for images inserted into a project's Background markdown
 -- (see src/app/api/projects/[id]/background/images) — public because the

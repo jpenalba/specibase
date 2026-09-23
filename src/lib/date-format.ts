@@ -32,3 +32,15 @@ function formatParts(day: string, month: string, year: string): string {
   if (!monthName) return `${day}/${month}/${year}`;
   return `${day.padStart(2, "0")} ${monthName} ${year}`;
 }
+
+// A Bioinformatic-notes block's "written on" date, auto-set from its
+// created_at timestamp — the same "01 Jan 1970" style as
+// formatDateDisplay, read in the viewer's local time zone since that's
+// the calendar day they'd recognize as "when I wrote this".
+export function formatTimestampDisplay(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const day = String(date.getDate()).padStart(2, "0");
+  const monthName = MONTH_ABBREVIATIONS[date.getMonth()];
+  return `${day} ${monthName} ${date.getFullYear()}`;
+}
