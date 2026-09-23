@@ -6,7 +6,7 @@ import { LabWorkflowDetailColumn, LabWorkflowDetailRow, LabWorkflowDetailValue }
 import { SampleRecord } from "@/lib/samples-store";
 import { ALL_STATUSES, EntryStatus, STATUS_BADGE_CLASS, STATUS_LABELS } from "@/lib/lab-workflow-status";
 import { incrementSeriesValue } from "@/lib/series-fill";
-import { formatDateDMY } from "@/lib/date-format";
+import { formatDateDisplay } from "@/lib/date-format";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -265,7 +265,7 @@ export function DetailTable({
                               {STATUS_LABELS[value as EntryStatus]}
                             </span>
                           ) : column.kind === "date" ? (
-                            formatDateDMY(value)
+                            formatDateDisplay(value)
                           ) : (
                             value
                           )}
