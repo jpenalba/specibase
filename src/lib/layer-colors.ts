@@ -29,3 +29,11 @@ export function colorForProjectIndex(index: number): string {
 // deliberately the same basic set used for the automatic assignment above,
 // not a separate wider picker.
 export const PICKABLE_LAYER_COLORS = CATEGORICAL_HEX;
+
+// Auto-assigns a color to the Nth distinct value of a project's chosen
+// marker-style field (species, country, ...) that hasn't been manually
+// picked — unlike colorForProjectIndex, there's no reserved "main database"
+// slot 0 here, since every value is on equal footing.
+export function colorForCategoryIndex(index: number): string {
+  return CATEGORICAL_HEX[index % CATEGORICAL_HEX.length];
+}

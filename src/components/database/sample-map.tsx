@@ -161,11 +161,12 @@ function computeVisiblePoints(
       if (hiddenSampleIds.has(sample.id)) continue;
       const point = pointFor(sample);
       if (!point) continue;
+      const style = layer.sampleStyles?.get(sample.id);
       points.push({
         sample,
         point,
-        color: layer.color,
-        shape: layer.shape,
+        color: style?.color ?? layer.color,
+        shape: style?.shape ?? layer.shape,
         size: isMainDatabase ? 12 : 16,
         isHighlighted: sample.id === highlightedSampleId,
       });
@@ -624,7 +625,11 @@ export function SampleMap({
       const imageTop = margin + 28;
       const legendLayers = layers.filter((l) => visibleLayerIds.has(l.id));
       const legendGbifLayers = gbifLayers.filter((g) => visibleGbifIds.has(g.id));
-      const legendHeight = 16 + (legendLayers.length + legendGbifLayers.length) * 14;
+      const legendLineCount = legendLayers.reduce(
+        (n, l) => n + (l.legendEntries?.length ?? 1),
+        0
+      );
+      const legendHeight = 16 + (legendLineCount + legendGbifLayers.length) * 14;
       const maxImgWidth = pageWidth - margin * 2;
       const maxImgHeight = pageHeight - imageTop - margin - legendHeight;
       const scale = Math.min(maxImgWidth / width, maxImgHeight / height);
@@ -636,24 +641,33 @@ export function SampleMap({
       let legendY = imageTop + imgHeight + 20;
       doc.setFontSize(9);
       const legendMarkerSize = 8;
-      for (const layer of legendLayers) {
-        const [r, g, b] = hexToRgb(layer.color);
+      function drawLegendLine(color: string, shape: LayerShape, text: string) {
+        const [r, g, b] = hexToRgb(color);
         doc.setFillColor(r, g, b);
         const cx = margin + 4;
         const cy = legendY - 3;
-        if (layer.shape === "circle") {
+        if (shape === "circle") {
           doc.circle(cx, cy, legendMarkerSize / 2, "F");
         } else {
           const half = legendMarkerSize / 2;
-          const points = shapePolygonPoints(layer.shape, legendMarkerSize, 0)!.map(
+          const points = shapePolygonPoints(shape, legendMarkerSize, 0)!.map(
             ([px, py]) => [cx - half + px, cy - half + py] as [number, number]
           );
           const deltas = points.slice(1).map(([px, py], i) => [px - points[i][0], py - points[i][1]]);
           doc.lines(deltas, points[0][0], points[0][1], [1, 1], "F", true);
         }
         doc.setTextColor(30, 30, 30);
-        doc.text(`${layer.label} (${layer.sampleIds.size})`, margin + 14, legendY);
+        doc.text(text, margin + 14, legendY);
         legendY += 14;
+      }
+      for (const layer of legendLayers) {
+        if (layer.legendEntries) {
+          for (const entry of layer.legendEntries) {
+            drawLegendLine(entry.color, entry.shape, `${entry.label} (${entry.count})`);
+          }
+        } else {
+          drawLegendLine(layer.color, layer.shape, `${layer.label} (${layer.sampleIds.size})`);
+        }
       }
       for (const species of legendGbifLayers) {
         doc.setTextColor(30, 30, 30);

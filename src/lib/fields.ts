@@ -60,6 +60,21 @@ export function optionalFieldByKey(key: string): FieldDef | undefined {
   return OPTIONAL_FIELDS.find((f) => f.key === key);
 }
 
+// Fields a project's Samples-tab map can color/shape markers by (see
+// marker-style.ts) — every text field a sample can have, required or
+// optional, except the sample ID itself (unique per sample, so grouping by
+// it would just assign every marker its own color). Date/number fields
+// aren't included since they don't read as discrete categories. Adding a
+// new text OPTIONAL_FIELDS entry (a population/subspecies column, say)
+// makes it available here automatically.
+export const MARKER_STYLE_FIELDS: FieldDef[] = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS].filter(
+  (f) => f.type === "text" && f.key !== "primary_identifier"
+);
+
+export function markerStyleFieldByKey(key: string): FieldDef | undefined {
+  return MARKER_STYLE_FIELDS.find((f) => f.key === key);
+}
+
 // The full set of columns currently shown for a table/popup/etc, given
 // which optional fields are ticked — used by anywhere that needs to know
 // "every field visible right now," not just the table.

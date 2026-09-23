@@ -1,7 +1,10 @@
 import { FOCAL_GROUP_CATEGORIES, FocalGroupCategory } from "@/lib/focal-group";
 import { ProjectStatus } from "@/lib/projects-store";
+import { MARKER_STYLE_FIELDS } from "@/lib/fields";
+import { LAYER_SHAPES, LayerShape } from "@/lib/layer-shapes";
 
 const STATUSES: ProjectStatus[] = ["in_progress", "completed"];
+const MARKER_STYLE_FIELD_KEYS = MARKER_STYLE_FIELDS.map((f) => f.key);
 
 // Distinguishes "this key wasn't in the request at all" (undefined — skip
 // it on an update) from "it was sent as an empty string" (still undefined
@@ -25,6 +28,9 @@ export type ParsedProjectFields = {
   status?: ProjectStatus;
   background?: string;
   notes?: string;
+  marker_style_field?: string | null;
+  marker_color?: string | null;
+  marker_shape?: LayerShape | null;
 };
 
 // Shared between POST (create) and PATCH (update) — pulls the project
@@ -53,6 +59,36 @@ export function parseProjectFields(
     }
   }
 
+  let markerStyleField: string | null | undefined;
+  if ("marker_style_field" in body) {
+    if (body.marker_style_field === null || body.marker_style_field === "") {
+      markerStyleField = null;
+    } else if (
+      typeof body.marker_style_field === "string" &&
+      MARKER_STYLE_FIELD_KEYS.includes(body.marker_style_field)
+    ) {
+      markerStyleField = body.marker_style_field;
+    } else {
+      return { error: `Unknown marker style field "${body.marker_style_field}"` };
+    }
+  }
+
+  let markerShape: LayerShape | null | undefined;
+  if ("marker_shape" in body) {
+    if (body.marker_shape === null || body.marker_shape === "") {
+      markerShape = null;
+    } else if (typeof body.marker_shape === "string" && LAYER_SHAPES.includes(body.marker_shape as LayerShape)) {
+      markerShape = body.marker_shape as LayerShape;
+    } else {
+      return { error: `Unknown marker shape "${body.marker_shape}"` };
+    }
+  }
+
+  let markerColor: string | null | undefined;
+  if ("marker_color" in body) {
+    markerColor = typeof body.marker_color === "string" && body.marker_color !== "" ? body.marker_color : null;
+  }
+
   return {
     description: stringField(body, "description"),
     start_date: stringField(body, "start_date"),
@@ -64,5 +100,8 @@ export function parseProjectFields(
     status,
     background: stringField(body, "background"),
     notes: stringField(body, "notes"),
+    marker_style_field: markerStyleField,
+    marker_color: markerColor,
+    marker_shape: markerShape,
   };
 }

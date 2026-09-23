@@ -3,18 +3,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { SampleRecord } from "@/lib/samples-store";
-import { SampleProjectLink } from "@/lib/projects-store";
+import { Project, SampleProjectLink } from "@/lib/projects-store";
 import { MapLayer } from "@/lib/layers";
 import { MAIN_DATABASE_COLOR } from "@/lib/layer-colors";
-import { DEFAULT_LAYER_SHAPE } from "@/lib/layer-shapes";
+import { DEFAULT_LAYER_SHAPE, LayerShape } from "@/lib/layer-shapes";
 import { getVisibleColumns } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
+import { MarkerStyle } from "@/lib/project-marker-styles-store";
+import { resolveCategoryStyles } from "@/lib/marker-style";
 import { SampleMap } from "@/components/database/sample-map";
 import { SampleTable } from "@/components/samples/sample-table";
 import { FieldPicker } from "@/components/samples/field-picker";
 import { SamplePicker } from "@/components/projects/sample-picker";
 import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
+import { MarkerStylePanel } from "@/components/projects/marker-style-panel";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,6 +37,8 @@ export default function ProjectSamplesPage() {
 
   const [samples, setSamples] = useState<SampleRecord[]>([]);
   const [links, setLinks] = useState<SampleProjectLink[]>([]);
+  const [project, setProject] = useState<Project | null>(null);
+  const [markerStyles, setMarkerStyles] = useState<MarkerStyle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mapSyncError, setMapSyncError] = useState<string | null>(null);
@@ -52,8 +57,9 @@ export default function ProjectSamplesPage() {
     Promise.all([
       fetch("/api/samples").then((res) => res.json()),
       fetch("/api/projects").then((res) => res.json()),
+      fetch(`/api/projects/${projectId}/marker-styles`).then((res) => res.json()),
     ])
-      .then(([samplesData, projectsData]) => {
+      .then(([samplesData, projectsData, markerStylesData]) => {
         if (samplesData.errors?.length > 0) {
           setError(samplesData.errors.join(" "));
           return;
@@ -62,13 +68,19 @@ export default function ProjectSamplesPage() {
           setError(projectsData.errors.join(" "));
           return;
         }
+        if (markerStylesData.errors?.length > 0) {
+          setError(markerStylesData.errors.join(" "));
+          return;
+        }
         setError(null);
         setSamples(samplesData.samples ?? []);
         setLinks(projectsData.links ?? []);
+        setProject((projectsData.projects ?? []).find((p: Project) => p.id === projectId) ?? null);
+        setMarkerStyles(markerStylesData.styles ?? []);
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     load();
@@ -79,20 +91,124 @@ export default function ProjectSamplesPage() {
     [links, projectId]
   );
 
-  const layer: MapLayer = useMemo(
-    () => ({
+  const tableSamples = useMemo(
+    () => samples.filter((s) => linkedSampleIds.has(s.id)),
+    [samples, linkedSampleIds]
+  );
+  const mappableCount = tableSamples.filter((s) => s.latitude != null && s.longitude != null).length;
+
+  const markerStyleField = project?.marker_style_field ?? null;
+  const singleColor = project?.marker_color ?? MAIN_DATABASE_COLOR;
+  const singleShape = project?.marker_shape ?? DEFAULT_LAYER_SHAPE;
+
+  const categories = useMemo(
+    () =>
+      markerStyleField ? resolveCategoryStyles(tableSamples, markerStyleField, markerStyles) : [],
+    [markerStyleField, tableSamples, markerStyles]
+  );
+
+  const layer: MapLayer = useMemo(() => {
+    if (!markerStyleField) {
+      return {
+        id: projectId,
+        label: "This project",
+        color: singleColor,
+        shape: singleShape,
+        sampleIds: linkedSampleIds,
+      };
+    }
+    const styleByValue = new Map(categories.map((c) => [c.value, { color: c.color, shape: c.shape }]));
+    const sampleStyles = new Map(
+      tableSamples.map((s) => {
+        const raw = s[markerStyleField];
+        const value = raw === undefined || raw === null || String(raw).trim() === "" ? "" : String(raw);
+        return [s.id, styleByValue.get(value) ?? { color: singleColor, shape: singleShape }];
+      })
+    );
+    return {
       id: projectId,
       label: "This project",
-      color: MAIN_DATABASE_COLOR,
-      shape: DEFAULT_LAYER_SHAPE,
+      color: singleColor,
+      shape: singleShape,
       sampleIds: linkedSampleIds,
-    }),
-    [projectId, linkedSampleIds]
-  );
+      sampleStyles,
+      legendEntries: categories.map((c) => ({
+        label: c.label,
+        color: c.color,
+        shape: c.shape,
+        count: c.count,
+      })),
+    };
+  }, [projectId, linkedSampleIds, markerStyleField, singleColor, singleShape, categories, tableSamples]);
   const visibleLayerIds = useMemo(() => new Set([projectId]), [projectId]);
 
-  const tableSamples = samples.filter((s) => linkedSampleIds.has(s.id));
-  const mappableCount = tableSamples.filter((s) => s.latitude != null && s.longitude != null).length;
+  async function patchProject(patch: Record<string, unknown>) {
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.errors?.join(" ") ?? "Couldn't save the marker style.");
+        return;
+      }
+      setProject(data.project);
+    } catch {
+      setError("Couldn't reach the server.");
+    }
+  }
+
+  function handleMarkerFieldChange(key: string | null) {
+    patchProject({ marker_style_field: key });
+  }
+
+  function handleSingleStyleChange(color: string, shape: LayerShape) {
+    patchProject({ marker_color: color, marker_shape: shape });
+  }
+
+  async function handleCategoryStyleChange(value: string, color: string, shape: LayerShape) {
+    if (!markerStyleField) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/marker-styles`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field_key: markerStyleField, field_value: value, color, shape }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.errors?.join(" ") ?? "Couldn't save that marker style.");
+        return;
+      }
+      setMarkerStyles((prev) => [
+        ...prev.filter((s) => !(s.field_key === markerStyleField && s.field_value === value)),
+        data.style,
+      ]);
+    } catch {
+      setError("Couldn't reach the server.");
+    }
+  }
+
+  async function handleCategoryStyleReset(value: string) {
+    if (!markerStyleField) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/marker-styles`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field_key: markerStyleField, field_value: value }),
+      });
+      if (!res.ok) {
+        setError("Couldn't reset that marker style.");
+        return;
+      }
+      setMarkerStyles((prev) =>
+        prev.filter((s) => !(s.field_key === markerStyleField && s.field_value === value))
+      );
+    } catch {
+      setError("Couldn't reach the server.");
+    }
+  }
 
   function toggleSampleHidden(sampleId: string) {
     setHiddenSampleIds((prev) => {
@@ -184,6 +300,17 @@ export default function ProjectSamplesPage() {
           The map couldn&apos;t draw the points: {mapSyncError}
         </div>
       )}
+
+      <MarkerStylePanel
+        fieldKey={markerStyleField}
+        onFieldChange={handleMarkerFieldChange}
+        singleColor={singleColor}
+        singleShape={singleShape}
+        onSingleStyleChange={handleSingleStyleChange}
+        categories={categories}
+        onCategoryStyleChange={handleCategoryStyleChange}
+        onCategoryStyleReset={handleCategoryStyleReset}
+      />
 
       <div className="flex h-[55vh] min-h-[420px] overflow-hidden rounded-lg border border-border">
         <SampleMap

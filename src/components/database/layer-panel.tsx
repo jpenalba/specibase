@@ -3,86 +3,12 @@
 import { useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
 import { MapLayer } from "@/lib/layers";
-import { LayerShape, LAYER_SHAPES } from "@/lib/layer-shapes";
-import { PICKABLE_LAYER_COLORS } from "@/lib/layer-colors";
+import { LayerShape } from "@/lib/layer-shapes";
 import { GbifSpeciesLayer } from "@/lib/gbif-store";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LayerShapeIcon } from "./layer-shape-icon";
+import { StylePicker } from "./style-picker";
 import { AddGbifSpeciesDialog } from "./add-gbif-species-dialog";
 import { cn } from "@/lib/utils";
-
-function StylePicker({
-  layer,
-  onSetColor,
-  onSetShape,
-}: {
-  layer: MapLayer;
-  onSetColor: (color: string) => void;
-  onSetShape: (shape: LayerShape) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex size-5 shrink-0 items-center justify-center rounded hover:bg-accent"
-        title="Change this layer's map color and shape"
-        aria-label={`Change ${layer.label}'s map color and shape`}
-      >
-        <LayerShapeIcon shape={layer.shape} color={layer.color} />
-      </button>
-
-      {open && (
-        <>
-          {/* Click-outside backdrop — simpler than wiring a document
-              listener for what's meant to be a small, basic picker. */}
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 z-20 mt-1 w-40 rounded-md border border-border bg-card p-2 shadow-md">
-            <p className="mb-1 text-[10px] font-medium text-muted-foreground">Color</p>
-            <div className="mb-2 flex flex-wrap gap-1">
-              {PICKABLE_LAYER_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => onSetColor(color)}
-                  className={cn(
-                    "size-5 rounded-full border",
-                    color === layer.color ? "border-foreground" : "border-transparent"
-                  )}
-                  style={{ backgroundColor: color }}
-                  aria-label={`Set color to ${color}`}
-                  title={color}
-                />
-              ))}
-            </div>
-            <p className="mb-1 text-[10px] font-medium text-muted-foreground">Shape</p>
-            <div className="flex gap-1">
-              {LAYER_SHAPES.map((shape) => (
-                <button
-                  key={shape}
-                  type="button"
-                  onClick={() => onSetShape(shape)}
-                  className={cn(
-                    "flex size-6 items-center justify-center rounded border",
-                    shape === layer.shape
-                      ? "border-foreground bg-accent"
-                      : "border-transparent hover:bg-accent"
-                  )}
-                  aria-label={`Set shape to ${shape}`}
-                  title={shape}
-                >
-                  <LayerShapeIcon shape={shape} color={layer.color} size={16} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 function LayerRow({
   layer,
@@ -114,7 +40,13 @@ function LayerRow({
       )}
     >
       <Checkbox checked={visible} onCheckedChange={onToggleVisible} />
-      <StylePicker layer={layer} onSetColor={onSetColor} onSetShape={onSetShape} />
+      <StylePicker
+        color={layer.color}
+        shape={layer.shape}
+        label={layer.label}
+        onSetColor={onSetColor}
+        onSetShape={onSetShape}
+      />
       <button
         type="button"
         onClick={onSelectActive}

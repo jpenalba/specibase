@@ -55,7 +55,12 @@ create table if not exists projects (
   -- Free-form markdown shown in the project's Info tab; null means
   -- nothing's been written yet for that section.
   background text,
-  notes text
+  notes text,
+
+  -- Samples-tab map styling — see supabase/migrations/0016_project_marker_styles.sql.
+  marker_style_field text,
+  marker_color text,
+  marker_shape text check (marker_shape in ('circle', 'square', 'triangle', 'diamond'))
 );
 
 create table if not exists sample_projects (
@@ -203,6 +208,24 @@ create table if not exists project_bio_notes_blocks (
 );
 
 create index if not exists project_bio_notes_blocks_project_id_idx on project_bio_notes_blocks (project_id);
+
+-- Per-value color/shape overrides when a project colors its Samples-tab
+-- map by a field (marker_style_field) instead of one flat style — see
+-- supabase/migrations/0016_project_marker_styles.sql.
+create table if not exists project_marker_styles (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  field_key text not null,
+  field_value text not null,
+  color text not null,
+  shape text not null default 'circle' check (shape in ('circle', 'square', 'triangle', 'diamond')),
+
+  unique (project_id, field_key, field_value)
+);
+
+create index if not exists project_marker_styles_project_id_idx on project_marker_styles (project_id);
 
 -- Custom, free-text columns on a workflow's Simple grid (e.g. an
 -- extraction or library name) — see
@@ -413,6 +436,7 @@ alter table bio_workflow_detail_columns enable row level security;
 alter table bio_workflow_detail_rows enable row level security;
 alter table bio_workflow_detail_values enable row level security;
 alter table project_bio_notes_blocks enable row level security;
+alter table project_marker_styles enable row level security;
 
 -- Public bucket for images inserted into a project's Background markdown
 -- (see src/app/api/projects/[id]/background/images) — public because the

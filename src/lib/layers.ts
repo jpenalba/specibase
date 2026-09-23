@@ -9,6 +9,15 @@ export type MapLayer = {
   color: string;
   shape: LayerShape;
   sampleIds: Set<string>;
+  // When set, a sample in this layer draws with its own entry here instead
+  // of the layer's flat color/shape above — used by a project's Samples
+  // tab when it's coloring/shaping markers by a field (species, etc)
+  // rather than one style for every sample. Samples with no entry fall
+  // back to the layer's own color/shape.
+  sampleStyles?: Map<string, { color: string; shape: LayerShape }>;
+  // When set (alongside sampleStyles), the map's PDF export draws one
+  // legend line per entry here instead of a single line for the layer.
+  legendEntries?: { label: string; color: string; shape: LayerShape; count: number }[];
 };
 
 export type LayerStyle = { color?: string; shape?: LayerShape };

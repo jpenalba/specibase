@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabase";
 import { FocalGroupCategory } from "./focal-group";
+import { LayerShape } from "./layer-shapes";
 
 const PROJECTS_TABLE = "projects";
 const LINK_TABLE = "sample_projects";
@@ -27,6 +28,14 @@ export type Project = {
   // "Add notes" button rather than empty rendered markdown.
   background: string | null;
   notes: string | null;
+  // Samples-tab map styling. Null marker_style_field means "single style"
+  // mode: every sample draws with marker_color/marker_shape (falling back
+  // to the app's usual defaults when those are also null). A non-null
+  // marker_style_field names a MARKER_STYLE_FIELDS key (see fields.ts) —
+  // per-value overrides then live in project_marker_styles.
+  marker_style_field: string | null;
+  marker_color: string | null;
+  marker_shape: LayerShape | null;
 };
 
 export type NewProjectInput = {
@@ -41,6 +50,9 @@ export type NewProjectInput = {
   status?: ProjectStatus;
   background?: string;
   notes?: string;
+  marker_style_field?: string | null;
+  marker_color?: string | null;
+  marker_shape?: LayerShape | null;
 };
 
 export type UpdateProjectInput = Partial<NewProjectInput>;
@@ -70,6 +82,9 @@ export async function createProject(input: NewProjectInput): Promise<Project> {
       status: input.status ?? "in_progress",
       background: input.background?.trim() || null,
       notes: input.notes?.trim() || null,
+      marker_style_field: input.marker_style_field ?? null,
+      marker_color: input.marker_color ?? null,
+      marker_shape: input.marker_shape ?? null,
     })
     .select()
     .single();
@@ -98,6 +113,9 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
   if (input.status !== undefined) patch.status = input.status;
   if (input.background !== undefined) patch.background = input.background.trim() || null;
   if (input.notes !== undefined) patch.notes = input.notes.trim() || null;
+  if (input.marker_style_field !== undefined) patch.marker_style_field = input.marker_style_field;
+  if (input.marker_color !== undefined) patch.marker_color = input.marker_color;
+  if (input.marker_shape !== undefined) patch.marker_shape = input.marker_shape;
 
   const { data, error } = await getSupabase()
     .from(PROJECTS_TABLE)
