@@ -35,6 +35,7 @@ export function SimpleGrid({
   entries,
   customColumns,
   customValues,
+  editable,
   onCommit,
   onSaveCustomValues,
 }: {
@@ -46,6 +47,10 @@ export function SimpleGrid({
   // tracked entirely separately rather than shoehorned into `entries`.
   customColumns: LabWorkflowCustomColumn[];
   customValues: LabWorkflowCustomValue[];
+  // Outside Editing mode the grid is a read-only view — ticking a step or
+  // typing into a custom column, and the fill handle, all only work when
+  // this is true.
+  editable: boolean;
   onCommit: (cells: PaintedCell[]) => void;
   // Bulk so a fill-handle drag across many rows is one save, not one per row.
   onSaveCustomValues: (columnId: string, entries: CustomValueEntry[]) => void;
@@ -239,24 +244,27 @@ export function SimpleGrid({
                         "group relative rounded-sm",
                         inFillRange && "outline outline-2 outline-offset-1 outline-primary"
                       )}
-                      onPointerEnter={() => updateFillDrag(column.id, sampleIndex)}
+                      onPointerEnter={editable ? () => updateFillDrag(column.id, sampleIndex) : undefined}
                     >
                       <Input
                         className="h-7 min-w-28"
                         value={customValueFor(column.id, sample.id)}
+                        disabled={!editable}
                         onChange={(e) => handleCustomChange(column.id, sample.id, e.target.value)}
                         onBlur={() => handleCustomBlur(column.id, sample.id)}
                       />
-                      <div
-                        role="presentation"
-                        aria-hidden
-                        className="absolute -bottom-1 -right-1 size-2.5 cursor-crosshair rounded-[2px] border border-card bg-primary opacity-0 group-hover:opacity-100"
-                        style={{ touchAction: "none" }}
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          startFillDrag(column.id, sampleIndex);
-                        }}
-                      />
+                      {editable && (
+                        <div
+                          role="presentation"
+                          aria-hidden
+                          className="absolute -bottom-1 -right-1 size-2.5 cursor-crosshair rounded-[2px] border border-card bg-primary opacity-0 group-hover:opacity-100"
+                          style={{ touchAction: "none" }}
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            startFillDrag(column.id, sampleIndex);
+                          }}
+                        />
+                      )}
                     </div>
                   </TableCell>
                 );
@@ -267,14 +275,19 @@ export function SimpleGrid({
                   <TableCell key={step.id} className="w-10 min-w-10 py-1 text-center">
                     <button
                       type="button"
+                      disabled={!editable}
                       title={STATUS_LABELS[status]}
                       aria-label={`${sample.primary_identifier} — ${step.label}: ${STATUS_LABELS[status]}`}
-                      className="rounded-full p-1 hover:bg-accent"
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        startPaint(step.id, sample.id, e.button === 2);
-                      }}
-                      onPointerEnter={() => paint(step.id, sample.id)}
+                      className="rounded-full p-1 enabled:hover:bg-accent disabled:cursor-default"
+                      onPointerDown={
+                        editable
+                          ? (e) => {
+                              e.preventDefault();
+                              startPaint(step.id, sample.id, e.button === 2);
+                            }
+                          : undefined
+                      }
+                      onPointerEnter={editable ? () => paint(step.id, sample.id) : undefined}
                       onContextMenu={(e) => e.preventDefault()}
                     >
                       <span className={cn("block size-3.5 rounded-full", STATUS_DOT_CLASS[status])} />

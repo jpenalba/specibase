@@ -82,7 +82,15 @@ export function WorkflowSection({
   // Manage samples / Edit steps / Manage columns are editing actions, not
   // everyday ones — collapsed behind this toggle so the grid's toolbar
   // stays out of the way until the user actually wants to change setup.
+  // It also locks the Simple grid itself: ticking a step or typing into a
+  // custom column only works in edit mode, and those changes are held
+  // locally (tracked in the dirty-key sets below) rather than saved as
+  // they happen — an explicit Save flushes them, Cancel discards them by
+  // re-fetching the last-saved state.
   const [editMode, setEditMode] = useState(false);
+  const [dirtyEntryKeys, setDirtyEntryKeys] = useState<Set<string>>(new Set());
+  const [dirtyValueKeys, setDirtyValueKeys] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     fetch(`/api/lab-workflows/${workflowId}`)
@@ -136,6 +144,9 @@ export function WorkflowSection({
     return counts;
   }, [entries]);
 
+  // Held locally until Save — see the editMode comment above. The grid
+  // still updates immediately so ticking feels instant; only the network
+  // call is deferred.
   function handleGridCommit(cells: { step_id: string; sample_id: string; status: EntryStatus }[]) {
     setEntries((prev) => {
       let next = prev;
@@ -144,11 +155,11 @@ export function WorkflowSection({
       }
       return next;
     });
-    fetch(`/api/lab-workflows/${workflowId}/entries`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entries: cells }),
-    }).catch(() => setError("Couldn't save one or more changes — try again."));
+    setDirtyEntryKeys((prev) => {
+      const next = new Set(prev);
+      for (const cell of cells) next.add(`${cell.step_id}:${cell.sample_id}`);
+      return next;
+    });
   }
 
   function handleDetailedSave(stepId: string, sampleId: string, patch: DetailedEntryPatch) {
@@ -160,8 +171,9 @@ export function WorkflowSection({
     }).catch(() => setError("Couldn't save that change — try again."));
   }
 
-  // Bulk so a fill-handle drag across many rows in the Simple grid is one
-  // save, not one request per row.
+  // Also held locally until Save, for the same reason as handleGridCommit —
+  // and still batched into one dirty-key update per call so a fill-handle
+  // drag across many rows doesn't thrash state one row at a time.
   function handleSaveCustomValues(columnId: string, edits: { sampleId: string; value: string }[]) {
     if (edits.length === 0) return;
     setCustomValues((prev) => {
@@ -187,17 +199,65 @@ export function WorkflowSection({
       }
       return next;
     });
-    fetch(`/api/lab-workflows/${workflowId}/custom-values`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        values: edits.map(({ sampleId, value }) => ({
-          column_id: columnId,
-          sample_id: sampleId,
-          value,
-        })),
-      }),
-    }).catch(() => setError("Couldn't save one or more changes — try again."));
+    setDirtyValueKeys((prev) => {
+      const next = new Set(prev);
+      for (const { sampleId } of edits) next.add(`${columnId}:${sampleId}`);
+      return next;
+    });
+  }
+
+  async function handleSaveEdits() {
+    setSaving(true);
+    setError(null);
+    try {
+      const entryPatches = entries
+        .filter((e) => dirtyEntryKeys.has(`${e.step_id}:${e.sample_id}`))
+        .map((e) => ({ step_id: e.step_id, sample_id: e.sample_id, status: e.status }));
+      const valuePatches = customValues
+        .filter((v) => dirtyValueKeys.has(`${v.column_id}:${v.sample_id}`))
+        .map((v) => ({ column_id: v.column_id, sample_id: v.sample_id, value: v.value }));
+
+      const requests: Promise<Response>[] = [];
+      if (entryPatches.length > 0) {
+        requests.push(
+          fetch(`/api/lab-workflows/${workflowId}/entries`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entries: entryPatches }),
+          })
+        );
+      }
+      if (valuePatches.length > 0) {
+        requests.push(
+          fetch(`/api/lab-workflows/${workflowId}/custom-values`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ values: valuePatches }),
+          })
+        );
+      }
+
+      const results = await Promise.all(requests);
+      if (results.some((r) => !r.ok)) {
+        setError("Couldn't save one or more changes — try again.");
+        return;
+      }
+      setDirtyEntryKeys(new Set());
+      setDirtyValueKeys(new Set());
+      setEditMode(false);
+      load();
+    } catch {
+      setError("Couldn't reach the server.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancelEdits() {
+    setDirtyEntryKeys(new Set());
+    setDirtyValueKeys(new Set());
+    setEditMode(false);
+    load();
   }
 
   if (loading) {
@@ -269,13 +329,20 @@ export function WorkflowSection({
               />
             </>
           )}
-          <Button
-            variant={editMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => setEditMode((prev) => !prev)}
-          >
-            {editMode ? "Done" : "Edit"}
-          </Button>
+          {editMode ? (
+            <>
+              <Button variant="outline" size="sm" onClick={handleCancelEdits} disabled={saving}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSaveEdits} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
+              Edit
+            </Button>
+          )}
         </div>
       </div>
 
@@ -302,6 +369,7 @@ export function WorkflowSection({
           entries={entries}
           customColumns={customColumns}
           customValues={customValues}
+          editable={editMode}
           onCommit={handleGridCommit}
           onSaveCustomValues={handleSaveCustomValues}
         />
