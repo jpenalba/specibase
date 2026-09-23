@@ -111,6 +111,29 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* The typography plugin's own default prose colors are a lighter gray than
+   the app's --foreground, so rendered markdown (Background/Notes, bio
+   notes blocks, reference citations) reads lower-contrast than the rest of
+   the UI. Tying these to --foreground/--muted-foreground keeps it legible
+   in both themes without needing separate dark-mode overrides. */
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--foreground);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--muted);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
+
 /* The logo artwork (public/logo.png) is dark grey line art on a
    transparent background — inverting it in dark mode turns it light grey
    instead of leaving it low-contrast against a near-black page. */
