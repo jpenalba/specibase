@@ -465,12 +465,27 @@ export function SampleTable({
                               )}
                               onPointerEnter={() => updateFillDrag(col.key, rowIndex)}
                             >
-                              <Input
-                                className="h-8 min-w-28"
-                                placeholder={col.type === "date" ? DATE_FORMAT_LABEL : undefined}
-                                value={value}
-                                onChange={(e) => updateDraftField(sample, col.key, e.target.value)}
-                              />
+                              {col.type === "select" ? (
+                                <select
+                                  value={value}
+                                  onChange={(e) => updateDraftField(sample, col.key, e.target.value)}
+                                  className="h-8 min-w-28 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                  <option value="">—</option>
+                                  {col.options?.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <Input
+                                  className="h-8 min-w-28"
+                                  placeholder={col.type === "date" ? DATE_FORMAT_LABEL : undefined}
+                                  value={value}
+                                  onChange={(e) => updateDraftField(sample, col.key, e.target.value)}
+                                />
+                              )}
                               <div
                                 role="presentation"
                                 aria-hidden

@@ -173,12 +173,28 @@ export function SampleEditDialog({
             {OPTIONAL_FIELDS.map((field) => (
               <div key={field.key} className="grid gap-1.5">
                 <Label htmlFor={`edit-${field.key}`}>{field.label}</Label>
-                <Input
-                  id={`edit-${field.key}`}
-                  placeholder={field.type === "date" ? DATE_FORMAT_LABEL : undefined}
-                  value={values[field.key] ?? ""}
-                  onChange={(e) => update(field.key, e.target.value)}
-                />
+                {field.type === "select" ? (
+                  <select
+                    id={`edit-${field.key}`}
+                    value={values[field.key] ?? ""}
+                    onChange={(e) => update(field.key, e.target.value)}
+                    className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">—</option>
+                    {field.options?.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    id={`edit-${field.key}`}
+                    placeholder={field.type === "date" ? DATE_FORMAT_LABEL : undefined}
+                    value={values[field.key] ?? ""}
+                    onChange={(e) => update(field.key, e.target.value)}
+                  />
+                )}
               </div>
             ))}
           </div>

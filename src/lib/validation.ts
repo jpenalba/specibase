@@ -93,11 +93,14 @@ export function validateRow(
   }
 
   for (const field of OPTIONAL_FIELDS) {
-    if (field.type !== "date") continue;
     const raw = row[field.key];
     if (isBlank(raw)) continue;
-    if (parseDDMMYYYY(raw) === null) {
-      errors.push(`${field.label} must be in ${DATE_FORMAT_LABEL} format`);
+    if (field.type === "date") {
+      if (parseDDMMYYYY(raw) === null) {
+        errors.push(`${field.label} must be in ${DATE_FORMAT_LABEL} format`);
+      }
+    } else if (field.type === "select" && field.options && !field.options.includes(raw)) {
+      errors.push(`${field.label} must be one of: ${field.options.join(", ")}`);
     }
   }
 

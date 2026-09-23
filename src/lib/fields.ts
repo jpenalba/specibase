@@ -1,10 +1,15 @@
-export type FieldType = "text" | "date" | "number";
+export type FieldType = "text" | "date" | "number" | "select";
 
 export type FieldDef = {
   key: string;
   label: string;
   type: FieldType;
   description?: string;
+  // Required (and exhaustive — no free-typed values allowed) when type is
+  // "select". Each option is both the stored value and its own display
+  // label, so CSV import/export and the database stay human-readable
+  // without a separate value/label lookup.
+  options?: string[];
 };
 
 // Always required, always shown, never toggleable.
@@ -56,10 +61,19 @@ export const OPTIONAL_FIELDS: FieldDef[] = [
   { key: "collection_date", label: "Collection date", type: "date" },
   { key: "country", label: "Country", type: "text" },
   {
-    key: "additional_number",
-    label: "Additional number",
+    key: "specimen_age",
+    label: "Modern/Historical",
+    type: "select",
+    options: ["Modern", "Historical"],
+    description: "Whether this is a fresh field-collected specimen or a historical/museum one",
+  },
+  { key: "museum_voucher", label: "Museum voucher", type: "text" },
+  { key: "field_number", label: "Field number", type: "text" },
+  {
+    key: "secondary_number",
+    label: "Secondary number",
     type: "text",
-    description: "Museum voucher, field number, or other secondary ID",
+    description: "Any other identifier that doesn't fit Museum voucher or Field number",
   },
   { key: "collector", label: "Collector", type: "text" },
   { key: "tissue_type", label: "Tissue type", type: "text" },
@@ -71,7 +85,7 @@ export const OPTIONAL_FIELDS: FieldDef[] = [
 export const DEFAULT_OPTIONAL_KEYS = [
   "collection_date",
   "country",
-  "additional_number",
+  "secondary_number",
   "notes",
 ];
 
@@ -86,14 +100,14 @@ export function optionalFieldByKey(key: string): FieldDef | undefined {
 }
 
 // Fields a project's Samples-tab map can color/shape markers by (see
-// marker-style.ts) — every text field a sample can have, required or
-// optional, except the sample ID itself (unique per sample, so grouping by
-// it would just assign every marker its own color). Date/number fields
-// aren't included since they don't read as discrete categories. Adding a
-// new text OPTIONAL_FIELDS entry (a population/subspecies column, say)
-// makes it available here automatically.
+// marker-style.ts) — every text or select field a sample can have,
+// required or optional, except the sample ID itself (unique per sample, so
+// grouping by it would just assign every marker its own color). Date/number
+// fields aren't included since they don't read as discrete categories.
+// Adding a new text/select OPTIONAL_FIELDS entry (a population/subspecies
+// column, say) makes it available here automatically.
 export const MARKER_STYLE_FIELDS: FieldDef[] = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS].filter(
-  (f) => f.type === "text" && f.key !== "primary_identifier"
+  (f) => (f.type === "text" || f.type === "select") && f.key !== "primary_identifier"
 );
 
 export function markerStyleFieldByKey(key: string): FieldDef | undefined {
