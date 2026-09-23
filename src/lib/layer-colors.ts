@@ -1,11 +1,18 @@
-// Fixed categorical order (never cycled/reassigned per-selection) from the
-// validated palette. "Main database" always takes slot 1; projects take
-// slots 2+ in the order they're listed. Point layers on a map are an
-// all-pairs case (every visible layer can sit next to every other), which
-// this palette only clears cleanly for its first three slots — past that,
-// simultaneously-visible layers lose some distinctness. Acceptable for a
-// handful of projects toggled a couple at a time; revisit if labs commonly
-// compare many projects on the map at once.
+// Fixed categorical order (never cycled/reassigned per-selection). The
+// first 8 are the validated core palette (`node
+// dataviz/scripts/validate_palette.js` — lightness band, chroma floor, and
+// CVD/normal-vision separation all clear on their own); "main database"
+// always takes slot 1, projects/collections/categories take slot 2+ in
+// listed order. The next 8 extend it for labs juggling more simultaneous
+// layers — same lightness/chroma/normal-vision checks still pass with
+// this ordering, with one adjacent pair (gold/coral) in the CVD floor
+// band rather than clearing the target, which is why every marker also
+// carries a pickable *shape* (see layer-shapes.ts): two layers whose
+// colors read close under color-blindness still don't collide once shape
+// is different. Point layers on a map are an all-pairs case (any two
+// visible layers can sit side by side), which no fixed palette clears
+// past a handful of slots — color narrows it down, shape disambiguates
+// the rest.
 const CATEGORICAL_HEX = [
   "#2a78d6", // blue — main database
   "#eb6834", // orange
@@ -15,6 +22,14 @@ const CATEGORICAL_HEX = [
   "#008300", // green
   "#4a3aa7", // violet
   "#e34948", // red
+  "#0d9488", // teal
+  "#6366f1", // indigo
+  "#db2777", // pink
+  "#65a30d", // lime
+  "#a21caf", // fuchsia
+  "#92400e", // brown
+  "#f43f5e", // coral
+  "#ca8a04", // gold
 ];
 
 export const MAIN_DATABASE_COLOR = CATEGORICAL_HEX[0];

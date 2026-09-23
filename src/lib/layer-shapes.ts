@@ -1,8 +1,40 @@
-export type LayerShape = "circle" | "square" | "triangle" | "diamond";
+export type LayerShape =
+  | "circle"
+  | "square"
+  | "triangle"
+  | "diamond"
+  | "pentagon"
+  | "hexagon"
+  | "star"
+  | "cross";
 
-export const LAYER_SHAPES: LayerShape[] = ["circle", "square", "triangle", "diamond"];
+export const LAYER_SHAPES: LayerShape[] = [
+  "circle",
+  "square",
+  "triangle",
+  "diamond",
+  "pentagon",
+  "hexagon",
+  "star",
+  "cross",
+];
 
 export const DEFAULT_LAYER_SHAPE: LayerShape = "circle";
+
+// Corner points for a regular polygon inscribed in a `size`x`size` box,
+// `sides` corners starting at the top and going clockwise — shared by
+// pentagon/hexagon below rather than writing out each one's coordinates
+// by hand.
+function regularPolygonPoints(sides: number, size: number, padding: number): [number, number][] {
+  const half = size / 2;
+  const radius = half - padding;
+  const points: [number, number][] = [];
+  for (let i = 0; i < sides; i++) {
+    const angle = (-90 + (i * 360) / sides) * (Math.PI / 180);
+    points.push([half + radius * Math.cos(angle), half + radius * Math.sin(angle)]);
+  }
+  return points;
+}
 
 // Corner points for a shape inscribed in a `size`x`size` box, `padding` in
 // from each edge (room for a stroke to sit fully inside the box rather
@@ -37,6 +69,39 @@ export function shapePolygonPoints(
         [half, size - padding],
         [padding, half],
       ];
+    case "pentagon":
+      return regularPolygonPoints(5, size, padding);
+    case "hexagon":
+      return regularPolygonPoints(6, size, padding);
+    case "star": {
+      const outer = half - padding;
+      const inner = outer * 0.45;
+      const points: [number, number][] = [];
+      for (let i = 0; i < 10; i++) {
+        const radius = i % 2 === 0 ? outer : inner;
+        const angle = (-90 + i * 36) * (Math.PI / 180);
+        points.push([half + radius * Math.cos(angle), half + radius * Math.sin(angle)]);
+      }
+      return points;
+    }
+    case "cross": {
+      const ext = half - padding;
+      const arm = ext * 0.4;
+      return [
+        [half - arm, half - ext],
+        [half + arm, half - ext],
+        [half + arm, half - arm],
+        [half + ext, half - arm],
+        [half + ext, half + arm],
+        [half + arm, half + arm],
+        [half + arm, half + ext],
+        [half - arm, half + ext],
+        [half - arm, half + arm],
+        [half - ext, half + arm],
+        [half - ext, half - arm],
+        [half - arm, half - arm],
+      ];
+    }
     case "circle":
       return null;
   }

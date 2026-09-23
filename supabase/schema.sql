@@ -57,10 +57,11 @@ create table if not exists projects (
   background text,
   notes text,
 
-  -- Samples-tab map styling — see supabase/migrations/0016_project_marker_styles.sql.
+  -- Samples-tab map styling — see supabase/migrations/0016_project_marker_styles.sql
+  -- and 0018_more_marker_shapes.sql.
   marker_style_field text,
   marker_color text,
-  marker_shape text check (marker_shape in ('circle', 'square', 'triangle', 'diamond'))
+  marker_shape text check (marker_shape in ('circle', 'square', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'cross'))
 );
 
 create table if not exists sample_projects (
@@ -224,7 +225,8 @@ create table if not exists project_marker_styles (
   field_key text not null,
   field_value text not null,
   color text not null,
-  shape text not null default 'circle' check (shape in ('circle', 'square', 'triangle', 'diamond')),
+  shape text not null default 'circle'
+    check (shape in ('circle', 'square', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'cross')),
 
   unique (project_id, field_key, field_value)
 );

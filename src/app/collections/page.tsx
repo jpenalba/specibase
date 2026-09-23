@@ -41,9 +41,10 @@ export default function CollectionsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Collections</h1>
           <p className="text-sm text-muted-foreground">
-            External collections worth keeping track of — a museum&apos;s, a
-            collaborator&apos;s, or anything else useful that isn&apos;t part of the main
-            database.
+            External sample sets worth tracking — field, museum, or
+            collaborator collections, or anything else — each shown as its
+            own layer on the database map, and one click away from joining
+            the main database.
           </p>
         </div>
         <CollectionDialog onSaved={load} trigger={<Button>Add collection</Button>} />

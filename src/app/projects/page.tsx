@@ -41,8 +41,9 @@ export default function ProjectsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Projects</h1>
           <p className="text-sm text-muted-foreground">
-            Everything about each project — who&apos;s involved, what it&apos;s
-            focused on, and how many samples are linked to it.
+            Each project&apos;s full workspace — background and references, its
+            samples on the map, lab and bioinformatic workflows, and a
+            running notebook, all in one place.
           </p>
         </div>
         <ProjectDialog onSaved={load} trigger={<Button>Add project</Button>} />
