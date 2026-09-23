@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { insertSamplesBulk } from "@/lib/samples-store";
 import { linkSamplesToProject } from "@/lib/projects-store";
+import { logActivity } from "@/lib/activity-log";
 import { RawRow } from "@/lib/validation";
 import { apiError } from "@/lib/api-error";
 
@@ -18,6 +19,13 @@ export async function POST(request: NextRequest) {
     result = await insertSamplesBulk(rows);
   } catch (error) {
     return apiError(error);
+  }
+
+  if (result.inserted.length === 1) {
+    const sample = result.inserted[0];
+    await logActivity("sample", "created", `Added sample ${sample.primary_identifier} (${sample.species})`);
+  } else if (result.inserted.length > 1) {
+    await logActivity("sample", "created", `Imported ${result.inserted.length} samples via CSV`);
   }
 
   let project: { id: string } | null = null;

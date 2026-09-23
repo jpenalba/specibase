@@ -144,7 +144,11 @@ export async function listProjects(): Promise<Project[]> {
 // Creating a project with a name that already exists just returns the
 // existing one, rather than erroring — typing an existing project's name
 // to add more samples to it is a normal thing to do here, not a conflict.
-export async function getOrCreateProject(name: string): Promise<Project> {
+// Reports whether it actually created a new row, so callers (the activity
+// log) only announce a creation when one actually happened.
+export async function getOrCreateProject(
+  name: string
+): Promise<{ project: Project; created: boolean }> {
   const trimmed = name.trim();
   const { data: existing, error: lookupError } = await getSupabase()
     .from(PROJECTS_TABLE)
@@ -152,7 +156,7 @@ export async function getOrCreateProject(name: string): Promise<Project> {
     .eq("name", trimmed)
     .maybeSingle();
   if (lookupError) throw new Error(lookupError.message);
-  if (existing) return existing as Project;
+  if (existing) return { project: existing as Project, created: false };
 
   const { data, error } = await getSupabase()
     .from(PROJECTS_TABLE)
@@ -160,7 +164,7 @@ export async function getOrCreateProject(name: string): Promise<Project> {
     .select()
     .single();
   if (error) throw new Error(error.message);
-  return data as Project;
+  return { project: data as Project, created: true };
 }
 
 export type SampleProjectLink = { sample_id: string; project_id: string };

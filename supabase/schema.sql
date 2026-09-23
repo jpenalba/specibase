@@ -447,6 +447,25 @@ create table if not exists protocols (
   pdf_filename text
 );
 
+-- Lightweight activity feed — one row per meaningful change, shown on
+-- /logs. See supabase/migrations/0024_activity_log.sql for the fuller
+-- reasoning (no entity_id/diff, just a precomputed summary line).
+create table if not exists activity_log (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+
+  entity_type text not null,
+  action text not null,
+  summary text not null
+);
+
+-- Single-row (id always 1) table of app-wide settings — no per-user auth,
+-- so this is one shared switch rather than a per-user preference.
+create table if not exists app_settings (
+  id smallint primary key default 1 check (id = 1),
+  activity_logging_enabled boolean not null default true
+);
+
 create index if not exists bio_workflow_steps_workflow_id_idx on bio_workflow_steps (workflow_id);
 create index if not exists bio_workflow_samples_sample_id_idx on bio_workflow_samples (sample_id);
 create index if not exists bio_workflow_entries_sample_id_idx on bio_workflow_entries (sample_id);
@@ -488,6 +507,10 @@ alter table bio_workflow_detail_values enable row level security;
 alter table project_bio_notes_blocks enable row level security;
 alter table project_marker_styles enable row level security;
 alter table protocols enable row level security;
+alter table activity_log enable row level security;
+alter table app_settings enable row level security;
+
+insert into app_settings (id) values (1) on conflict (id) do nothing;
 
 -- Public bucket for images inserted into a project's Background markdown
 -- (see src/app/api/projects/[id]/background/images) — public because the

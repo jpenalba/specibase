@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listCollectionSamples } from "@/lib/collections-store";
+import { getCollection, listCollectionSamples } from "@/lib/collections-store";
 import { sampleToRawRow, insertSamplesBulk } from "@/lib/samples-store";
 import { ALL_FIELDS } from "@/lib/fields";
+import { logActivity } from "@/lib/activity-log";
 import { apiError } from "@/lib/api-error";
 
 // Copies every sample currently in this collection into the main
@@ -23,6 +24,14 @@ export async function POST(
     }
     const rows = samples.map((sample) => sampleToRawRow(sample, ALL_FIELDS));
     const result = await insertSamplesBulk(rows);
+    if (result.inserted.length > 0) {
+      const collection = await getCollection(id);
+      await logActivity(
+        "sample",
+        "created",
+        `Added ${result.inserted.length} sample(s) from collection "${collection?.name ?? "collection"}" to the main database`
+      );
+    }
     return NextResponse.json(result);
   } catch (error) {
     return apiError(error);

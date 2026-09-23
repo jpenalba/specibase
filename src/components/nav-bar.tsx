@@ -6,11 +6,11 @@ import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 
 const LINKS = [
-  { href: "/", label: "Home" },
   { href: "/projects", label: "Projects" },
   { href: "/database", label: "Database" },
   { href: "/collections", label: "Collections" },
   { href: "/protocols", label: "Protocols" },
+  { href: "/logs", label: "Logs" },
 ];
 
 export function NavBar() {
@@ -34,8 +34,6 @@ export function NavBar() {
           // Exact match everywhere except Projects, where a nested route
           // (a specific project's own tabs) should still show it active —
           // the primary tab now, with the most nested navigation under it.
-          // Home is also exact — every other route starts with its own
-          // segment, so "/" never spuriously matches as a prefix.
           const active =
             link.href === "/projects"
               ? pathname === link.href || pathname.startsWith(`${link.href}/`)

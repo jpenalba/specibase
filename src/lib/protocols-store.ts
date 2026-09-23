@@ -84,9 +84,17 @@ export async function updateProtocol(
   return data as Protocol;
 }
 
-export async function deleteProtocol(id: string): Promise<void> {
-  const { error } = await getSupabase().from(TABLE).delete().eq("id", id);
+// Returns the deleted protocol's name so callers (the activity log) can
+// name it without a separate lookup.
+export async function deleteProtocol(id: string): Promise<string> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .delete()
+    .eq("id", id)
+    .select("name")
+    .maybeSingle();
   if (error) throw new Error(error.message);
+  return (data?.name as string) ?? id;
 }
 
 // Uploads to a public bucket (see supabase/migrations/0021_protocols.sql).

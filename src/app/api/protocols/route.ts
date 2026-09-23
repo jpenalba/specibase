@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProtocol, listProtocols } from "@/lib/protocols-store";
+import { logActivity } from "@/lib/activity-log";
 import { apiError } from "@/lib/api-error";
 import { parseProtocolFields } from "./parse-body";
 
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
       pdf_url: fields.pdf_url,
       pdf_filename: fields.pdf_filename,
     });
+    await logActivity("protocol", "created", `Added protocol "${protocol.name}"`);
     return NextResponse.json({ protocol }, { status: 201 });
   } catch (error) {
     return apiError(error);

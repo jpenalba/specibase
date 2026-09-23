@@ -172,14 +172,23 @@ export async function updateSample(id: string, rawRow: RawRow): Promise<InsertRe
   return { ok: true, sample: data as SampleRecord };
 }
 
-export type DeleteResult = { ok: true } | { ok: false; errors: string[] };
+export type DeleteResult =
+  | { ok: true; primaryIdentifier: string }
+  | { ok: false; errors: string[] };
 
 // Cascades to sample_projects (see supabase/schema.sql) — no separate
-// cleanup needed for a sample's project links.
+// cleanup needed for a sample's project links. Returns the identifier of
+// what was deleted so callers (the activity log) can name it without a
+// separate lookup.
 export async function deleteSample(id: string): Promise<DeleteResult> {
-  const { error } = await getSupabase().from(TABLE).delete().eq("id", id);
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .delete()
+    .eq("id", id)
+    .select("primary_identifier")
+    .maybeSingle();
   if (error) return { ok: false, errors: [error.message] };
-  return { ok: true };
+  return { ok: true, primaryIdentifier: (data?.primary_identifier as string) ?? id };
 }
 
 export type BulkImportResult = {

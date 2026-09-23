@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteCollectionSample } from "@/lib/collections-store";
+import { deleteCollectionSample, getCollection } from "@/lib/collections-store";
+import { logActivity } from "@/lib/activity-log";
 import { apiError } from "@/lib/api-error";
 
 export async function DELETE(
@@ -12,6 +13,12 @@ export async function DELETE(
     if (!result.ok) {
       return NextResponse.json({ errors: result.errors }, { status: 400 });
     }
+    const collection = await getCollection(id);
+    await logActivity(
+      "collection_sample",
+      "deleted",
+      `Removed sample ${result.primaryIdentifier} from collection "${collection?.name ?? "collection"}"`
+    );
     return NextResponse.json({ ok: true });
   } catch (error) {
     return apiError(error);

@@ -105,6 +105,16 @@ export async function listCollections(): Promise<Collection[]> {
   return (data ?? []) as Collection[];
 }
 
+export async function getCollection(id: string): Promise<Collection | null> {
+  const { data, error } = await getSupabase()
+    .from(COLLECTIONS_TABLE)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as Collection) ?? null;
+}
+
 export type CollectionSampleRef = { id: string; collection_id: string };
 
 // Just enough to compute a per-collection sample count without an N+1
@@ -252,12 +262,16 @@ export async function insertCollectionSamplesBulk(
 export async function deleteCollectionSample(
   collectionId: string,
   sampleId: string
-): Promise<{ ok: true } | { ok: false; errors: string[] }> {
-  const { error } = await getSupabase()
+): Promise<
+  { ok: true; primaryIdentifier: string } | { ok: false; errors: string[] }
+> {
+  const { data, error } = await getSupabase()
     .from(SAMPLES_TABLE)
     .delete()
     .eq("collection_id", collectionId)
-    .eq("id", sampleId);
+    .eq("id", sampleId)
+    .select("primary_identifier")
+    .maybeSingle();
   if (error) return { ok: false, errors: [error.message] };
-  return { ok: true };
+  return { ok: true, primaryIdentifier: (data?.primary_identifier as string) ?? sampleId };
 }

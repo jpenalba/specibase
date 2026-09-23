@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCollection, listCollections, listCollectionSampleRefs } from "@/lib/collections-store";
+import { logActivity } from "@/lib/activity-log";
 import { apiError } from "@/lib/api-error";
 import { parseCollectionFields } from "./parse-body";
 
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const collection = await createCollection({ name, ...fields });
+    await logActivity("collection", "created", `Created collection "${collection.name}"`);
     return NextResponse.json({ collection }, { status: 201 });
   } catch (error) {
     return apiError(error);

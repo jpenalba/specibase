@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteProtocol, updateProtocol } from "@/lib/protocols-store";
+import { logActivity } from "@/lib/activity-log";
 import { apiError } from "@/lib/api-error";
 import { parseProtocolFields } from "../parse-body";
 
@@ -31,6 +32,7 @@ export async function PATCH(
     }
 
     const protocol = await updateProtocol(id, { name, ...fields });
+    await logActivity("protocol", "updated", `Updated protocol "${protocol.name}"`);
     return NextResponse.json({ protocol });
   } catch (error) {
     return apiError(error);
@@ -43,7 +45,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await deleteProtocol(id);
+    const name = await deleteProtocol(id);
+    await logActivity("protocol", "deleted", `Deleted protocol "${name}"`);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return apiError(error);
