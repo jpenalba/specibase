@@ -299,7 +299,8 @@ export function DetailTable({
                             </select>
                           ) : (
                             <Input
-                              type={column.kind === "date" ? "date" : "text"}
+                              type="text"
+                              placeholder={column.kind === "date" ? "dd/mm/yyyy" : undefined}
                               className="h-7 min-w-28"
                               value={value}
                               onChange={(e) => handleChange(column.id, row.id, e.target.value)}
