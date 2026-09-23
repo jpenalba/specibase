@@ -31,7 +31,10 @@ export async function DELETE(
     if (!result.ok) {
       return NextResponse.json({ errors: result.errors }, { status: 400 });
     }
-    await logActivity("sample", "deleted", `Deleted sample ${result.primaryIdentifier}`);
+    await logActivity("sample", "deleted", `Deleted sample ${result.primaryIdentifier}`, {
+      kind: "restore_sample",
+      sampleId: id,
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return apiError(error);

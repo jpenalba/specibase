@@ -29,7 +29,8 @@ export async function POST(
       await logActivity(
         "sample",
         "created",
-        `Added ${result.inserted.length} sample(s) from collection "${collection?.name ?? "collection"}" to the main database`
+        `Added ${result.inserted.length} sample(s) from collection "${collection?.name ?? "collection"}" to the main database`,
+        { kind: "delete_samples", sampleIds: result.inserted.map((s) => s.id) }
       );
     }
     return NextResponse.json(result);

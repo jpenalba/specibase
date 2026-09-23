@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityLogEntry } from "@/lib/activity-log";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 // Groups entries by local calendar day — "23 September 2026" — so a long
 // history reads as a scannable list of days rather than one flat feed.
@@ -33,8 +35,13 @@ export default function LogsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingToggle, setSavingToggle] = useState(false);
+  const [undoingId, setUndoingId] = useState<string | null>(null);
+  const [undoError, setUndoError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Not called with loading reset to true on every refetch (e.g. after an
+  // undo) — only the very first load, which `loading`'s initial state
+  // already covers, needs the "Loading..." placeholder.
+  const load = useCallback(() => {
     fetch("/api/activity-log")
       .then((res) => res.json())
       .then((data) => {
@@ -49,6 +56,10 @@ export default function LogsPage() {
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function toggleEnabled() {
     const next = !enabled;
@@ -65,6 +76,24 @@ export default function LogsPage() {
       setEnabled(!next);
     } finally {
       setSavingToggle(false);
+    }
+  }
+
+  async function undo(entry: ActivityLogEntry) {
+    setUndoingId(entry.id);
+    setUndoError(null);
+    try {
+      const res = await fetch(`/api/activity-log/${entry.id}/undo`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setUndoError(data.errors?.join(" ") ?? "Couldn't undo this.");
+        return;
+      }
+      load();
+    } catch {
+      setUndoError("Couldn't reach the server.");
+    } finally {
+      setUndoingId(null);
     }
   }
 
@@ -86,7 +115,7 @@ export default function LogsPage() {
           <h1 className="text-2xl font-semibold">Logs</h1>
           <p className="text-sm text-muted-foreground">
             A running record of changes made in Specibase — samples added or edited, projects
-            created, and so on.
+            created, and so on. Recent deletes and imports can be undone below.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -104,7 +133,15 @@ export default function LogsPage() {
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           Couldn&apos;t load logs: {error}. If you haven&apos;t already, run{" "}
           <code className="rounded bg-black/10 px-1">supabase/migrations/0024_activity_log.sql</code>{" "}
-          in the Supabase SQL Editor.
+          and{" "}
+          <code className="rounded bg-black/10 px-1">supabase/migrations/0025_undo.sql</code> in the
+          Supabase SQL Editor.
+        </div>
+      )}
+
+      {undoError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          {undoError}
         </div>
       )}
 
@@ -129,15 +166,33 @@ export default function LogsPage() {
                 {group.entries.map((entry, i) => (
                   <div
                     key={entry.id}
-                    className={
-                      i === 0
-                        ? "flex items-baseline justify-between gap-4 p-3 text-sm"
-                        : "flex items-baseline justify-between gap-4 border-t border-border p-3 text-sm"
-                    }
+                    className={cn(
+                      "flex items-center justify-between gap-4 p-3 text-sm",
+                      i > 0 && "border-t border-border"
+                    )}
                   >
-                    <span>{entry.summary}</span>
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                      {timeOfDay(entry.created_at)}
+                    <span className={cn(entry.undone_at && "text-muted-foreground line-through")}>
+                      {entry.summary}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-3">
+                      {entry.undone_at ? (
+                        <span className="text-xs text-muted-foreground">Undone</span>
+                      ) : (
+                        entry.undo_data && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            disabled={undoingId === entry.id}
+                            onClick={() => undo(entry)}
+                          >
+                            {undoingId === entry.id ? "Undoing..." : "Undo"}
+                          </Button>
+                        )
+                      )}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {timeOfDay(entry.created_at)}
+                      </span>
                     </span>
                   </div>
                 ))}

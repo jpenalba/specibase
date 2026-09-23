@@ -141,6 +141,7 @@ export async function listCollectionSamples(collectionId: string): Promise<Colle
     .from(SAMPLES_TABLE)
     .select("*")
     .eq("collection_id", collectionId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as CollectionSample[];
@@ -150,7 +151,7 @@ export async function listCollectionSamples(collectionId: string): Promise<Colle
 // collection_id — used by the database map to draw one layer per
 // collection without an N+1 fetch per collection.
 export async function listAllCollectionSamples(): Promise<CollectionSample[]> {
-  const { data, error } = await getSupabase().from(SAMPLES_TABLE).select("*");
+  const { data, error } = await getSupabase().from(SAMPLES_TABLE).select("*").is("deleted_at", null);
   if (error) throw new Error(error.message);
   return (data ?? []) as CollectionSample[];
 }
@@ -259,6 +260,8 @@ export async function insertCollectionSamplesBulk(
   return { inserted, skipped, duplicateIds: [] };
 }
 
+// Soft-delete, same reasoning as samples-store.ts's deleteSample — reversible
+// via restoreCollectionSample, and only affects a currently-live row.
 export async function deleteCollectionSample(
   collectionId: string,
   sampleId: string
@@ -267,11 +270,30 @@ export async function deleteCollectionSample(
 > {
   const { data, error } = await getSupabase()
     .from(SAMPLES_TABLE)
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("collection_id", collectionId)
     .eq("id", sampleId)
+    .is("deleted_at", null)
     .select("primary_identifier")
     .maybeSingle();
   if (error) return { ok: false, errors: [error.message] };
-  return { ok: true, primaryIdentifier: (data?.primary_identifier as string) ?? sampleId };
+  if (!data) return { ok: false, errors: ["Sample not found"] };
+  return { ok: true, primaryIdentifier: data.primary_identifier as string };
+}
+
+export async function restoreCollectionSample(
+  collectionId: string,
+  sampleId: string
+): Promise<{ ok: true } | { ok: false; errors: string[] }> {
+  const { data, error } = await getSupabase()
+    .from(SAMPLES_TABLE)
+    .update({ deleted_at: null })
+    .eq("collection_id", collectionId)
+    .eq("id", sampleId)
+    .not("deleted_at", "is", null)
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, errors: [error.message] };
+  if (!data) return { ok: false, errors: ["Sample not found, or wasn't deleted"] };
+  return { ok: true };
 }

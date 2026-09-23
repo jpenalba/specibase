@@ -37,11 +37,15 @@ export async function readSamples(): Promise<SampleRecord[]> {
   const { data, error } = await getSupabase()
     .from(TABLE)
     .select("*")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as SampleRecord[];
 }
 
+// Deliberately not filtered by deleted_at — a soft-deleted sample's ID
+// stays reserved (see deleteSample) so a new sample can't collide with one
+// that might still come back via Undo.
 export async function existingIdentifiers(): Promise<Set<string>> {
   const { data, error } = await getSupabase()
     .from(TABLE)
@@ -176,19 +180,38 @@ export type DeleteResult =
   | { ok: true; primaryIdentifier: string }
   | { ok: false; errors: string[] };
 
-// Cascades to sample_projects (see supabase/schema.sql) — no separate
-// cleanup needed for a sample's project links. Returns the identifier of
-// what was deleted so callers (the activity log) can name it without a
-// separate lookup.
+// Soft-delete — sets deleted_at rather than removing the row, so it never
+// cascades into the sample's workflow history (see 0025_undo.sql) and can
+// be reversed via restoreSample. Only affects a currently-live row, so
+// deleting an already-deleted sample reports "not found" rather than
+// silently no-op-ing. Returns the identifier of what was deleted so
+// callers (the activity log) can name it without a separate lookup.
 export async function deleteSample(id: string): Promise<DeleteResult> {
   const { data, error } = await getSupabase()
     .from(TABLE)
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", id)
+    .is("deleted_at", null)
     .select("primary_identifier")
     .maybeSingle();
   if (error) return { ok: false, errors: [error.message] };
-  return { ok: true, primaryIdentifier: (data?.primary_identifier as string) ?? id };
+  if (!data) return { ok: false, errors: ["Sample not found"] };
+  return { ok: true, primaryIdentifier: data.primary_identifier as string };
+}
+
+export type RestoreResult = { ok: true } | { ok: false; errors: string[] };
+
+export async function restoreSample(id: string): Promise<RestoreResult> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .update({ deleted_at: null })
+    .eq("id", id)
+    .not("deleted_at", "is", null)
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, errors: [error.message] };
+  if (!data) return { ok: false, errors: ["Sample not found, or wasn't deleted"] };
+  return { ok: true };
 }
 
 export type BulkImportResult = {

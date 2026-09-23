@@ -20,7 +20,8 @@ async function backfillTable(
     .is("genus", null)
     .is("family", null)
     .is("taxon_order", null)
-    .is("taxon_class", null);
+    .is("taxon_class", null)
+    .is("deleted_at", null);
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as { id: string; species: string }[];

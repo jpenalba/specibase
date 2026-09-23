@@ -17,7 +17,8 @@ export async function DELETE(
     await logActivity(
       "collection_sample",
       "deleted",
-      `Removed sample ${result.primaryIdentifier} from collection "${collection?.name ?? "collection"}"`
+      `Removed sample ${result.primaryIdentifier} from collection "${collection?.name ?? "collection"}"`,
+      { kind: "restore_collection_sample", collectionId: id, sampleId }
     );
     return NextResponse.json({ ok: true });
   } catch (error) {

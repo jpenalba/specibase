@@ -46,6 +46,11 @@ create table if not exists samples (
   repository_accession text,
   notes text,
 
+  -- Soft-delete — see supabase/migrations/0025_undo.sql for why (a real
+  -- delete cascades into a lot of workflow history). Null means live;
+  -- filtered out of every normal read.
+  deleted_at timestamptz,
+
   constraint samples_coords_paired check ((latitude is null) = (longitude is null)),
   constraint samples_location_required check (
     (latitude is not null and longitude is not null) or locality is not null
@@ -139,6 +144,8 @@ create table if not exists collection_samples (
   storage_location text,
   repository_accession text,
   notes text,
+
+  deleted_at timestamptz,
 
   constraint collection_samples_coords_paired check ((latitude is null) = (longitude is null)),
   constraint collection_samples_location_required check (
@@ -456,7 +463,12 @@ create table if not exists activity_log (
 
   entity_type text not null,
   action text not null,
-  summary text not null
+  summary text not null,
+
+  -- Undo support — see supabase/migrations/0025_undo.sql. null undo_data
+  -- means this entry isn't undoable; undone_at marks one that already was.
+  undo_data jsonb,
+  undone_at timestamptz
 );
 
 -- Single-row (id always 1) table of app-wide settings — no per-user auth,

@@ -23,9 +23,19 @@ export async function POST(request: NextRequest) {
 
   if (result.inserted.length === 1) {
     const sample = result.inserted[0];
-    await logActivity("sample", "created", `Added sample ${sample.primary_identifier} (${sample.species})`);
+    await logActivity(
+      "sample",
+      "created",
+      `Added sample ${sample.primary_identifier} (${sample.species})`,
+      { kind: "delete_samples", sampleIds: [sample.id] }
+    );
   } else if (result.inserted.length > 1) {
-    await logActivity("sample", "created", `Imported ${result.inserted.length} samples via CSV`);
+    await logActivity(
+      "sample",
+      "created",
+      `Imported ${result.inserted.length} samples via CSV`,
+      { kind: "delete_samples", sampleIds: result.inserted.map((s) => s.id) }
+    );
   }
 
   let project: { id: string } | null = null;

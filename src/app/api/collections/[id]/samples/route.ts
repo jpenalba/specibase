@@ -36,13 +36,19 @@ export async function POST(
         await logActivity(
           "collection_sample",
           "created",
-          `Added sample ${result.inserted[0].primary_identifier} to collection "${name}"`
+          `Added sample ${result.inserted[0].primary_identifier} to collection "${name}"`,
+          { kind: "delete_collection_samples", collectionId: id, sampleIds: [result.inserted[0].id] }
         );
       } else {
         await logActivity(
           "collection_sample",
           "created",
-          `Imported ${result.inserted.length} samples into collection "${name}"`
+          `Imported ${result.inserted.length} samples into collection "${name}"`,
+          {
+            kind: "delete_collection_samples",
+            collectionId: id,
+            sampleIds: result.inserted.map((s) => s.id),
+          }
         );
       }
     }
