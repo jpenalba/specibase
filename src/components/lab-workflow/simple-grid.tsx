@@ -237,6 +237,13 @@ export function SimpleGrid({
                   fillPreview?.columnId === column.id &&
                   sampleIndex >= fillPreview.from &&
                   sampleIndex <= fillPreview.to;
+                if (!editable) {
+                  return (
+                    <TableCell key={column.id} className="py-1">
+                      {customValueFor(column.id, sample.id)}
+                    </TableCell>
+                  );
+                }
                 return (
                   <TableCell key={column.id} className="py-1">
                     <div
@@ -244,27 +251,24 @@ export function SimpleGrid({
                         "group relative rounded-sm",
                         inFillRange && "outline outline-2 outline-offset-1 outline-primary"
                       )}
-                      onPointerEnter={editable ? () => updateFillDrag(column.id, sampleIndex) : undefined}
+                      onPointerEnter={() => updateFillDrag(column.id, sampleIndex)}
                     >
                       <Input
                         className="h-7 min-w-28"
                         value={customValueFor(column.id, sample.id)}
-                        disabled={!editable}
                         onChange={(e) => handleCustomChange(column.id, sample.id, e.target.value)}
                         onBlur={() => handleCustomBlur(column.id, sample.id)}
                       />
-                      {editable && (
-                        <div
-                          role="presentation"
-                          aria-hidden
-                          className="absolute -bottom-1 -right-1 size-2.5 cursor-crosshair rounded-[2px] border border-card bg-primary opacity-0 group-hover:opacity-100"
-                          style={{ touchAction: "none" }}
-                          onPointerDown={(e) => {
-                            e.preventDefault();
-                            startFillDrag(column.id, sampleIndex);
-                          }}
-                        />
-                      )}
+                      <div
+                        role="presentation"
+                        aria-hidden
+                        className="absolute -bottom-1 -right-1 size-2.5 cursor-crosshair rounded-[2px] border border-card bg-primary opacity-0 group-hover:opacity-100"
+                        style={{ touchAction: "none" }}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          startFillDrag(column.id, sampleIndex);
+                        }}
+                      />
                     </div>
                   </TableCell>
                 );
