@@ -67,7 +67,14 @@ export const OPTIONAL_FIELDS: FieldDef[] = [
     options: ["Modern", "Historical"],
     description: "Whether this is a fresh field-collected specimen or a historical/museum one",
   },
+  { key: "sex", label: "Sex", type: "select", options: ["Male", "Female", "Unknown"] },
   { key: "museum_voucher", label: "Museum voucher", type: "text" },
+  {
+    key: "institution",
+    label: "Institution/repository",
+    type: "text",
+    description: "Where the specimen or voucher is physically held (e.g. a museum or collection code)",
+  },
   { key: "field_number", label: "Field number", type: "text" },
   {
     key: "secondary_number",
@@ -77,7 +84,19 @@ export const OPTIONAL_FIELDS: FieldDef[] = [
   },
   { key: "collector", label: "Collector", type: "text" },
   { key: "tissue_type", label: "Tissue type", type: "text" },
+  {
+    key: "preservation_method",
+    label: "Preservation method",
+    type: "text",
+    description: "How the tissue was preserved (e.g. ethanol, frozen, RNAlater, dried)",
+  },
   { key: "storage_location", label: "Storage location", type: "text" },
+  {
+    key: "repository_accession",
+    label: "Data repository accession",
+    type: "text",
+    description: "Accession ID from GenBank, ENA, DDBJ, or another sequence data repository",
+  },
   { key: "notes", label: "Notes", type: "text" },
 ];
 
