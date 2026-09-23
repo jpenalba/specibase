@@ -260,6 +260,115 @@ create index if not exists lab_workflow_detail_rows_workflow_id_idx on lab_workf
 create index if not exists lab_workflow_detail_rows_sample_id_idx on lab_workflow_detail_rows (sample_id);
 create index if not exists lab_workflow_detail_values_row_id_idx on lab_workflow_detail_values (row_id);
 
+-- Bioinformatic workflow — the same table design as Lab Workflow above,
+-- under its own names, with a different preset vocabulary
+-- (src/lib/bio-workflow-steps.ts, bio-workflow-detail-columns.ts). See
+-- supabase/migrations/0014_bio_workflows.sql.
+create table if not exists bio_workflows (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  name text not null,
+  status text not null default 'in_progress' check (status in ('in_progress', 'completed'))
+);
+
+create table if not exists bio_workflow_steps (
+  id uuid primary key default gen_random_uuid(),
+  workflow_id uuid not null references bio_workflows (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  position integer not null,
+  step_key text not null,
+  label text not null
+);
+
+create table if not exists bio_workflow_samples (
+  workflow_id uuid not null references bio_workflows (id) on delete cascade,
+  sample_id uuid not null references samples (id) on delete cascade,
+  added_at timestamptz not null default now(),
+  primary key (workflow_id, sample_id)
+);
+
+create table if not exists bio_workflow_entries (
+  id uuid primary key default gen_random_uuid(),
+  step_id uuid not null references bio_workflow_steps (id) on delete cascade,
+  sample_id uuid not null references samples (id) on delete cascade,
+  updated_at timestamptz not null default now(),
+
+  status text not null default 'not_started'
+    check (status in ('not_started', 'in_progress', 'done', 'failed')),
+  method text,
+  date date,
+  performed_by text,
+  quantification jsonb,
+  notes text,
+
+  unique (step_id, sample_id)
+);
+
+create table if not exists bio_workflow_custom_columns (
+  id uuid primary key default gen_random_uuid(),
+  workflow_id uuid not null references bio_workflows (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  position integer not null,
+  label text not null
+);
+
+create table if not exists bio_workflow_custom_values (
+  id uuid primary key default gen_random_uuid(),
+  column_id uuid not null references bio_workflow_custom_columns (id) on delete cascade,
+  sample_id uuid not null references samples (id) on delete cascade,
+  updated_at timestamptz not null default now(),
+
+  value text,
+
+  unique (column_id, sample_id)
+);
+
+create table if not exists bio_workflow_detail_columns (
+  id uuid primary key default gen_random_uuid(),
+  workflow_id uuid not null references bio_workflows (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  position integer not null,
+  label text not null,
+  kind text not null default 'text' check (kind in ('text', 'date', 'status'))
+);
+
+create table if not exists bio_workflow_detail_rows (
+  id uuid primary key default gen_random_uuid(),
+  workflow_id uuid not null references bio_workflows (id) on delete cascade,
+  sample_id uuid not null references samples (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  attempt_number integer not null default 1,
+
+  unique (workflow_id, sample_id, attempt_number)
+);
+
+create table if not exists bio_workflow_detail_values (
+  id uuid primary key default gen_random_uuid(),
+  column_id uuid not null references bio_workflow_detail_columns (id) on delete cascade,
+  row_id uuid not null references bio_workflow_detail_rows (id) on delete cascade,
+  updated_at timestamptz not null default now(),
+
+  value text,
+
+  unique (column_id, row_id)
+);
+
+create index if not exists bio_workflow_steps_workflow_id_idx on bio_workflow_steps (workflow_id);
+create index if not exists bio_workflow_samples_sample_id_idx on bio_workflow_samples (sample_id);
+create index if not exists bio_workflow_entries_sample_id_idx on bio_workflow_entries (sample_id);
+create index if not exists bio_workflow_custom_columns_workflow_id_idx on bio_workflow_custom_columns (workflow_id);
+create index if not exists bio_workflow_custom_values_sample_id_idx on bio_workflow_custom_values (sample_id);
+create index if not exists bio_workflow_detail_columns_workflow_id_idx on bio_workflow_detail_columns (workflow_id);
+create index if not exists bio_workflow_detail_rows_workflow_id_idx on bio_workflow_detail_rows (workflow_id);
+create index if not exists bio_workflow_detail_rows_sample_id_idx on bio_workflow_detail_rows (sample_id);
+create index if not exists bio_workflow_detail_values_row_id_idx on bio_workflow_detail_values (row_id);
+
 -- No client code ever talks to Supabase directly (the app's own API routes
 -- do, using the service role key, which bypasses RLS) — this just makes
 -- sure that stays true if an anon-key client ever gets added by mistake.
@@ -279,6 +388,15 @@ alter table lab_workflow_custom_values enable row level security;
 alter table lab_workflow_detail_columns enable row level security;
 alter table lab_workflow_detail_rows enable row level security;
 alter table lab_workflow_detail_values enable row level security;
+alter table bio_workflows enable row level security;
+alter table bio_workflow_steps enable row level security;
+alter table bio_workflow_samples enable row level security;
+alter table bio_workflow_entries enable row level security;
+alter table bio_workflow_custom_columns enable row level security;
+alter table bio_workflow_custom_values enable row level security;
+alter table bio_workflow_detail_columns enable row level security;
+alter table bio_workflow_detail_rows enable row level security;
+alter table bio_workflow_detail_values enable row level security;
 
 -- Public bucket for images inserted into a project's Background markdown
 -- (see src/app/api/projects/[id]/background/images) — public because the

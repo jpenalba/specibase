@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import { DETAIL_COLUMN_PRESETS } from "@/lib/lab-workflow-detail-columns";
+import { DETAIL_COLUMN_PRESETS, DetailColumnPreset } from "@/lib/lab-workflow-detail-columns";
 import { LabWorkflowDetailColumn } from "@/lib/lab-workflows-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,11 +26,18 @@ export function ManageDetailColumnsDialog({
   columns,
   onSaved,
   trigger,
+  apiBase = "/api/lab-workflows",
+  presets = DETAIL_COLUMN_PRESETS,
 }: {
   workflowId: string;
   columns: LabWorkflowDetailColumn[];
   onSaved: () => void;
   trigger: React.ReactNode;
+  // Defaults to Lab Workflow's own endpoint/vocabulary so existing callers
+  // don't need to change; Bioinformatic Workflow passes "/api/bio-workflows"
+  // and BIO_DETAIL_COLUMN_PRESETS.
+  apiBase?: string;
+  presets?: DetailColumnPreset[];
 }) {
   const [open, setOpen] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
@@ -54,7 +61,7 @@ export function ManageDetailColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/detail-columns`, {
+      const res = await fetch(`${apiBase}/${workflowId}/detail-columns`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label, kind }),
@@ -89,7 +96,7 @@ export function ManageDetailColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/detail-columns/${renamingId}`, {
+      const res = await fetch(`${apiBase}/${workflowId}/detail-columns/${renamingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: renameDraft }),
@@ -119,7 +126,7 @@ export function ManageDetailColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/detail-columns/${column.id}`, {
+      const res = await fetch(`${apiBase}/${workflowId}/detail-columns/${column.id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error();
@@ -206,7 +213,7 @@ export function ManageDetailColumnsDialog({
 
         <div className="grid gap-2">
           <div className="flex flex-wrap gap-1.5">
-            {DETAIL_COLUMN_PRESETS.map((preset) => (
+            {presets.map((preset) => (
               <button
                 key={preset.label}
                 type="button"

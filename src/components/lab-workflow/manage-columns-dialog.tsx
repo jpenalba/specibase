@@ -24,11 +24,15 @@ export function ManageColumnsDialog({
   columns,
   onSaved,
   trigger,
+  apiBase = "/api/lab-workflows",
 }: {
   workflowId: string;
   columns: LabWorkflowCustomColumn[];
   onSaved: () => void;
   trigger: React.ReactNode;
+  // Defaults to Lab Workflow's own endpoint so existing callers don't need
+  // to change; Bioinformatic Workflow passes "/api/bio-workflows".
+  apiBase?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -51,7 +55,7 @@ export function ManageColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/custom-columns`, {
+      const res = await fetch(`${apiBase}/${workflowId}/custom-columns`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: newLabel }),
@@ -80,7 +84,7 @@ export function ManageColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/custom-columns/${renamingId}`, {
+      const res = await fetch(`${apiBase}/${workflowId}/custom-columns/${renamingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: renameDraft }),
@@ -110,7 +114,7 @@ export function ManageColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/custom-columns/${column.id}`, {
+      const res = await fetch(`${apiBase}/${workflowId}/custom-columns/${column.id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error();

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { LabWorkflow, WorkflowStatus } from "@/lib/lab-workflows-store";
-import { STEP_PRESETS, CUSTOM_STEP_KEY } from "@/lib/lab-workflow-steps";
+import { STEP_PRESETS } from "@/lib/lab-workflow-steps";
 import { BuilderStep, StepBuilder, newBuilderStep } from "./step-builder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,14 +18,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+type StepPresetLike = { key: string; label: string };
+
 // A new workflow starts pre-populated with the full default step set
 // (everything but "Other", which is the customization affordance rather
 // than a concrete step) — removing a step a lab doesn't need is a smaller
-// ask than adding all eleven one at a time.
-function defaultSteps(): BuilderStep[] {
-  return STEP_PRESETS.filter((p) => p.key !== CUSTOM_STEP_KEY).map((p) =>
-    newBuilderStep(p.key, p.label)
-  );
+// ask than adding them all one at a time.
+function defaultSteps(presets: StepPresetLike[]): BuilderStep[] {
+  return presets.filter((p) => p.key !== "custom").map((p) => newBuilderStep(p.key, p.label));
 }
 
 // Creates a new workflow (name + initial steps, both submitted together —
@@ -42,6 +42,8 @@ export function WorkflowDialog({
   trigger,
   open: openProp,
   onOpenChange: onOpenChangeProp,
+  apiBase = "/api/lab-workflows",
+  stepPresets = STEP_PRESETS,
 }: {
   projectId: string;
   workflow?: LabWorkflow;
@@ -52,13 +54,18 @@ export function WorkflowDialog({
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  // Defaults to Lab Workflow's own endpoints/vocabulary so existing callers
+  // don't need to change; Bioinformatic Workflow passes "/api/bio-workflows"
+  // and BIO_STEP_PRESETS.
+  apiBase?: string;
+  stepPresets?: StepPresetLike[];
 }) {
   const isEdit = Boolean(workflow);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp ?? internalOpen;
   const [name, setName] = useState(workflow?.name ?? "");
   const [status, setStatus] = useState<WorkflowStatus>(workflow?.status ?? "in_progress");
-  const [steps, setSteps] = useState<BuilderStep[]>(defaultSteps());
+  const [steps, setSteps] = useState<BuilderStep[]>(defaultSteps(stepPresets));
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -73,7 +80,7 @@ export function WorkflowDialog({
     if (next) {
       setName(workflow?.name ?? "");
       setStatus(workflow?.status ?? "in_progress");
-      setSteps(defaultSteps());
+      setSteps(defaultSteps(stepPresets));
       setErrors([]);
     }
   }
@@ -93,7 +100,7 @@ export function WorkflowDialog({
     setSubmitting(true);
     setErrors([]);
     try {
-      const url = workflow ? `/api/lab-workflows/${workflow.id}` : "/api/lab-workflows";
+      const url = workflow ? `${apiBase}/${workflow.id}` : apiBase;
       const body = isEdit
         ? { name: trimmedName, status }
         : {
@@ -132,7 +139,7 @@ export function WorkflowDialog({
     setDeleting(true);
     setErrors([]);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflow.id}`, { method: "DELETE" });
+      const res = await fetch(`${apiBase}/${workflow.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setErrors(data.errors ?? ["Couldn't delete the workflow."]);
@@ -200,7 +207,7 @@ export function WorkflowDialog({
               </div>
             </div>
           ) : (
-            <StepBuilder steps={steps} onChange={setSteps} />
+            <StepBuilder steps={steps} onChange={setSteps} presets={stepPresets} />
           )}
 
           <DialogFooter className={isEdit ? "sm:justify-between" : undefined}>

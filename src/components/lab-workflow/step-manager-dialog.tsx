@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { LabWorkflowStep } from "@/lib/lab-workflows-store";
+import { STEP_PRESETS } from "@/lib/lab-workflow-steps";
 import { BuilderStep, StepBuilder } from "./step-builder";
+
+type StepPresetLike = { key: string; label: string };
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +34,8 @@ export function StepManagerDialog({
   entryCountByStepId,
   onSaved,
   trigger,
+  apiBase = "/api/lab-workflows",
+  stepPresets = STEP_PRESETS,
 }: {
   workflowId: string;
   steps: LabWorkflowStep[];
@@ -39,6 +44,11 @@ export function StepManagerDialog({
   entryCountByStepId: Map<string, number>;
   onSaved: () => void;
   trigger: React.ReactNode;
+  // Defaults to Lab Workflow's own endpoints/vocabulary so existing callers
+  // don't need to change; Bioinformatic Workflow passes "/api/bio-workflows"
+  // and BIO_STEP_PRESETS.
+  apiBase?: string;
+  stepPresets?: StepPresetLike[];
 }) {
   const [open, setOpen] = useState(false);
   const [builderSteps, setBuilderSteps] = useState<BuilderStep[]>([]);
@@ -78,13 +88,13 @@ export function StepManagerDialog({
       const added = builderSteps.filter((s) => !s.id);
 
       for (const step of removed) {
-        const res = await fetch(`/api/lab-workflows/${workflowId}/steps/${step.id}`, {
+        const res = await fetch(`${apiBase}/${workflowId}/steps/${step.id}`, {
           method: "DELETE",
         });
         if (!res.ok) throw new Error("Couldn't remove a step");
       }
       for (const step of renamed) {
-        const res = await fetch(`/api/lab-workflows/${workflowId}/steps/${step.id}`, {
+        const res = await fetch(`${apiBase}/${workflowId}/steps/${step.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ label: step.label }),
@@ -98,7 +108,7 @@ export function StepManagerDialog({
       // position appendSteps assigns, ascending).
       let resolvedAdded: LabWorkflowStep[] = [];
       if (added.length > 0) {
-        const res = await fetch(`/api/lab-workflows/${workflowId}/steps`, {
+        const res = await fetch(`${apiBase}/${workflowId}/steps`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -113,7 +123,7 @@ export function StepManagerDialog({
       let addedIndex = 0;
       const finalOrderIds = builderSteps.map((s) => s.id ?? resolvedAdded[addedIndex++].id);
 
-      const reorderRes = await fetch(`/api/lab-workflows/${workflowId}/steps`, {
+      const reorderRes = await fetch(`${apiBase}/${workflowId}/steps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderedStepIds: finalOrderIds }),
@@ -150,7 +160,12 @@ export function StepManagerDialog({
               </ul>
             </div>
           )}
-          <StepBuilder steps={builderSteps} onChange={setBuilderSteps} onBeforeRemove={confirmRemove} />
+          <StepBuilder
+            steps={builderSteps}
+            onChange={setBuilderSteps}
+            onBeforeRemove={confirmRemove}
+            presets={stepPresets}
+          />
           <DialogFooter>
             <Button type="button" onClick={handleSave} disabled={saving}>
               {saving ? "Saving..." : "Save changes"}

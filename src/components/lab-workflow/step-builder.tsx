@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
-import { CUSTOM_STEP_KEY, STEP_PRESETS } from "@/lib/lab-workflow-steps";
+import { STEP_PRESETS } from "@/lib/lab-workflow-steps";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+
+// Every step-preset vocabulary (Lab Workflow's STEP_PRESETS, Bioinformatic
+// Workflow's BIO_STEP_PRESETS) uses this literal as its "type your own
+// label" sentinel, so it's hardcoded here rather than imported from either
+// domain's preset file — this component doesn't otherwise know which
+// domain it's building steps for.
+const CUSTOM_KEY = "custom";
+type StepPresetLike = { key: string; label: string };
 
 // clientId is a purely local React key (stable across reorders even
 // though array index isn't) — `id` only exists once a step has actually
@@ -29,6 +37,7 @@ export function StepBuilder({
   steps,
   onChange,
   onBeforeRemove,
+  presets: presetsProp = STEP_PRESETS,
 }: {
   steps: BuilderStep[];
   onChange: (steps: BuilderStep[]) => void;
@@ -36,9 +45,13 @@ export function StepBuilder({
   // has sample data logged against it, e.g. via a confirmation prompt.
   // Returning false leaves the step list untouched.
   onBeforeRemove?: (step: BuilderStep) => boolean;
+  // The pick-a-preset pills — defaults to Lab Workflow's vocabulary so
+  // existing callers don't need to change; Bioinformatic Workflow passes
+  // its own (BIO_STEP_PRESETS).
+  presets?: StepPresetLike[];
 }) {
   const [customLabel, setCustomLabel] = useState("");
-  const presets = STEP_PRESETS.filter((p) => p.key !== CUSTOM_STEP_KEY);
+  const presets = presetsProp.filter((p) => p.key !== CUSTOM_KEY);
 
   function add(step_key: string, label: string) {
     onChange([...steps, newBuilderStep(step_key, label)]);
@@ -47,7 +60,7 @@ export function StepBuilder({
   function addCustom() {
     const label = customLabel.trim();
     if (!label) return;
-    add(CUSTOM_STEP_KEY, label);
+    add(CUSTOM_KEY, label);
     setCustomLabel("");
   }
 
@@ -83,7 +96,7 @@ export function StepBuilder({
               className="flex items-center gap-2 rounded-md border border-input px-2 py-1.5"
             >
               <span className="w-5 text-center text-xs text-muted-foreground">{index + 1}</span>
-              {step.step_key === CUSTOM_STEP_KEY ? (
+              {step.step_key === CUSTOM_KEY ? (
                 <Input
                   value={step.label}
                   onChange={(e) => rename(index, e.target.value)}

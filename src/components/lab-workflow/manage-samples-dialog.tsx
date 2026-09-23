@@ -26,12 +26,16 @@ export function ManageSamplesDialog({
   enrolledIds,
   onSaved,
   trigger,
+  apiBase = "/api/lab-workflows",
 }: {
   workflowId: string;
   allSamples: SampleRecord[];
   enrolledIds: Set<string>;
   onSaved: () => void;
   trigger: React.ReactNode;
+  // Defaults to Lab Workflow's own endpoint so existing callers don't need
+  // to change; Bioinformatic Workflow passes "/api/bio-workflows".
+  apiBase?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [addSelection, setAddSelection] = useState<Set<string>>(new Set());
@@ -66,7 +70,7 @@ export function ManageSamplesDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/samples`, {
+      const res = await fetch(`${apiBase}/${workflowId}/samples`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sampleIds: [sampleId] }),
@@ -85,7 +89,7 @@ export function ManageSamplesDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/samples`, {
+      const res = await fetch(`${apiBase}/${workflowId}/samples`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sampleIds: [...addSelection] }),

@@ -14,6 +14,8 @@ import {
 } from "@/lib/lab-workflows-store";
 import { SampleRecord } from "@/lib/samples-store";
 import { EntryStatus } from "@/lib/lab-workflow-status";
+import { STEP_PRESETS } from "@/lib/lab-workflow-steps";
+import { DETAIL_COLUMN_PRESETS, DetailColumnPreset } from "@/lib/lab-workflow-detail-columns";
 import { WorkflowStatusBadge } from "./workflow-status-badge";
 import { WorkflowDialog } from "./workflow-dialog";
 import { ManageSamplesDialog } from "./manage-samples-dialog";
@@ -26,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { cn, compareIdentifiers } from "@/lib/utils";
 
 type ViewMode = "simple" | "detailed";
+type StepPresetLike = { key: string; label: string };
 const PAGE_SIZES = [20, 50, 100] as const;
 
 function mergeEntry(
@@ -64,6 +67,9 @@ export function WorkflowSection({
   workflowId,
   allSamples,
   onDeleted,
+  apiBase = "/api/lab-workflows",
+  stepPresets = STEP_PRESETS,
+  detailColumnPresets = DETAIL_COLUMN_PRESETS,
 }: {
   projectId: string;
   workflowId: string;
@@ -71,6 +77,12 @@ export function WorkflowSection({
   // Called after this workflow is deleted (from its Edit dialog) so the
   // page can drop this section from the stacked list.
   onDeleted: () => void;
+  // Defaults to Lab Workflow's own endpoint/vocabulary so existing callers
+  // don't need to change; Bioinformatic Workflow passes "/api/bio-workflows"
+  // plus BIO_STEP_PRESETS/BIO_DETAIL_COLUMN_PRESETS.
+  apiBase?: string;
+  stepPresets?: StepPresetLike[];
+  detailColumnPresets?: DetailColumnPreset[];
 }) {
   const [workflow, setWorkflow] = useState<LabWorkflow | null>(null);
   const [steps, setSteps] = useState<LabWorkflowStep[]>([]);
@@ -101,7 +113,7 @@ export function WorkflowSection({
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
-    fetch(`/api/lab-workflows/${workflowId}`)
+    fetch(`${apiBase}/${workflowId}`)
       .then((res) => res.json())
       .then((detail) => {
         if (detail.errors?.length > 0) {
@@ -121,7 +133,7 @@ export function WorkflowSection({
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
-  }, [workflowId]);
+  }, [apiBase, workflowId]);
 
   useEffect(() => {
     load();
@@ -249,7 +261,7 @@ export function WorkflowSection({
   async function handleDuplicateRow(row: LabWorkflowDetailRow) {
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/detail-rows/${row.id}/duplicate`, {
+      const res = await fetch(`${apiBase}/${workflowId}/detail-rows/${row.id}/duplicate`, {
         method: "POST",
       });
       if (!res.ok) throw new Error();
@@ -267,7 +279,7 @@ export function WorkflowSection({
     }
     setError(null);
     try {
-      const res = await fetch(`/api/lab-workflows/${workflowId}/detail-rows/${row.id}`, {
+      const res = await fetch(`${apiBase}/${workflowId}/detail-rows/${row.id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error();
@@ -294,7 +306,7 @@ export function WorkflowSection({
       const requests: Promise<Response>[] = [];
       if (entryPatches.length > 0) {
         requests.push(
-          fetch(`/api/lab-workflows/${workflowId}/entries`, {
+          fetch(`${apiBase}/${workflowId}/entries`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ entries: entryPatches }),
@@ -303,7 +315,7 @@ export function WorkflowSection({
       }
       if (valuePatches.length > 0) {
         requests.push(
-          fetch(`/api/lab-workflows/${workflowId}/custom-values`, {
+          fetch(`${apiBase}/${workflowId}/custom-values`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ values: valuePatches }),
@@ -312,7 +324,7 @@ export function WorkflowSection({
       }
       if (detailValuePatches.length > 0) {
         requests.push(
-          fetch(`/api/lab-workflows/${workflowId}/detail-values`, {
+          fetch(`${apiBase}/${workflowId}/detail-values`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ values: detailValuePatches }),
@@ -373,6 +385,8 @@ export function WorkflowSection({
               workflow={workflow}
               onSaved={load}
               onDeleted={onDeleted}
+              apiBase={apiBase}
+              stepPresets={stepPresets}
               trigger={
                 <button
                   type="button"
@@ -397,6 +411,7 @@ export function WorkflowSection({
                 allSamples={allSamples}
                 enrolledIds={enrolledIds}
                 onSaved={load}
+                apiBase={apiBase}
                 trigger={<Button variant="outline" size="sm">Manage samples</Button>}
               />
               <StepManagerDialog
@@ -404,6 +419,8 @@ export function WorkflowSection({
                 steps={steps}
                 entryCountByStepId={entryCountByStepId}
                 onSaved={load}
+                apiBase={apiBase}
+                stepPresets={stepPresets}
                 trigger={<Button variant="outline" size="sm">Edit steps</Button>}
               />
               {view === "simple" ? (
@@ -411,6 +428,7 @@ export function WorkflowSection({
                   workflowId={workflowId}
                   columns={customColumns}
                   onSaved={load}
+                  apiBase={apiBase}
                   trigger={<Button variant="outline" size="sm">Manage columns</Button>}
                 />
               ) : (
@@ -418,6 +436,8 @@ export function WorkflowSection({
                   workflowId={workflowId}
                   columns={detailColumns}
                   onSaved={load}
+                  apiBase={apiBase}
+                  presets={detailColumnPresets}
                   trigger={<Button variant="outline" size="sm">Manage detail columns</Button>}
                 />
               )}
