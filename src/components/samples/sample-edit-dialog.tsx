@@ -121,7 +121,19 @@ export function SampleEditDialog({
             {REQUIRED_FIELDS.map((field) => (
               <div key={field.key} className="grid gap-1.5">
                 <Label htmlFor={`edit-${field.key}`}>{field.label} *</Label>
-                {field.key === "species" ? (
+                {field.key === "primary_identifier" ? (
+                  <>
+                    <div
+                      id={`edit-${field.key}`}
+                      className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground"
+                    >
+                      {values[field.key]}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Can&apos;t be changed — delete the sample to remove it.
+                    </p>
+                  </>
+                ) : field.key === "species" ? (
                   <SpeciesInput
                     id={`edit-${field.key}`}
                     value={values[field.key] ?? ""}

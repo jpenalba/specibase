@@ -1,11 +1,13 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
-import { MoreHorizontal, Search, Trash2 } from "lucide-react";
+import { Fragment, useMemo, useRef, useState } from "react";
+import { MoreHorizontal, Search, Trash2, X } from "lucide-react";
 import { getVisibleColumns, FieldDef } from "@/lib/fields";
 import { DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
 import { RawRow } from "@/lib/validation";
 import { SampleRecord, sampleToRawRow } from "@/lib/samples-store";
+import { incrementSeriesValue } from "@/lib/series-fill";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -118,6 +120,30 @@ export function SampleTable({
   const [rowErrors, setRowErrors] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
 
+  // Fill handle, same drag-a-corner mechanic as the Lab/Bioinformatic
+  // Detailed tables' — drag doesn't commit anything on release, instead it
+  // stages a pending fill and shows a floating choice of continuing the
+  // source cell's series or just copying it down, near wherever the
+  // pointer was released. Scoped to the current page's rows, since
+  // dragging onto a row that isn't rendered doesn't make sense.
+  const [pendingFill, setPendingFill] = useState<{
+    colKey: string;
+    sourceIndex: number;
+    targetIndex: number;
+    sourceValue: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [fillPreview, setFillPreview] = useState<{ colKey: string; from: number; to: number } | null>(
+    null
+  );
+  const fillDragRef = useRef<{
+    colKey: string;
+    sourceIndex: number;
+    currentIndex: number;
+    sourceValue: string;
+  } | null>(null);
+
   const filteredSamples = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return samples;
@@ -167,6 +193,55 @@ export function SampleTable({
     });
   }
 
+  function cellValue(sample: SampleRecord, key: string): string {
+    const draft = drafts[sample.id];
+    return draft ? (draft[key] ?? "") : (sampleToRawRow(sample, columns)[key] ?? "");
+  }
+
+  function startFillDrag(colKey: string, sourceIndex: number) {
+    const sourceValue = cellValue(pageSamples[sourceIndex], colKey);
+    const drag = { colKey, sourceIndex, currentIndex: sourceIndex, sourceValue };
+    fillDragRef.current = drag;
+    setFillPreview({ colKey, from: sourceIndex, to: sourceIndex });
+
+    function finish(e: PointerEvent) {
+      fillDragRef.current = null;
+      setFillPreview(null);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (drag.currentIndex === drag.sourceIndex) return;
+      setPendingFill({
+        colKey,
+        sourceIndex: drag.sourceIndex,
+        targetIndex: drag.currentIndex,
+        sourceValue: drag.sourceValue,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    }
+
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  }
+
+  function updateFillDrag(colKey: string, index: number) {
+    const drag = fillDragRef.current;
+    if (!drag || drag.colKey !== colKey) return;
+    drag.currentIndex = index;
+    setFillPreview({ colKey, from: Math.min(drag.sourceIndex, index), to: Math.max(drag.sourceIndex, index) });
+  }
+
+  function applyPendingFill(mode: "series" | "copy") {
+    if (!pendingFill) return;
+    const { colKey, sourceIndex, targetIndex, sourceValue } = pendingFill;
+    const step = targetIndex > sourceIndex ? 1 : -1;
+    for (let i = sourceIndex + step; step > 0 ? i <= targetIndex : i >= targetIndex; i += step) {
+      const value = mode === "series" ? incrementSeriesValue(sourceValue, i - sourceIndex) : sourceValue;
+      updateDraftField(pageSamples[i], colKey, value);
+    }
+    setPendingFill(null);
+  }
+
   async function saveAll() {
     const ids = Object.keys(drafts);
     if (ids.length === 0) {
@@ -194,6 +269,8 @@ export function SampleTable({
     setRowErrors(nextErrors);
     setSaving(false);
     if (Object.keys(nextErrors).length === 0) {
+      setPendingFill(null);
+      setFillPreview(null);
       onExitEditMode();
     }
   }
@@ -201,6 +278,8 @@ export function SampleTable({
   function cancelEdits() {
     setDrafts({});
     setRowErrors({});
+    setPendingFill(null);
+    setFillPreview(null);
     onExitEditMode();
   }
 
@@ -234,8 +313,45 @@ export function SampleTable({
   const rangeStart = sortedSamples.length === 0 ? 0 : currentPage * pageSize + 1;
   const rangeEnd = Math.min(sortedSamples.length, currentPage * pageSize + pageSize);
 
+  const fillCount = pendingFill ? Math.abs(pendingFill.targetIndex - pendingFill.sourceIndex) : 0;
+  // Rough popup footprint, clamped inside the viewport so it never renders
+  // partly off-screen near an edge or corner.
+  const POPUP_WIDTH = 280;
+  const POPUP_HEIGHT = 46;
+  const popupLeft = pendingFill
+    ? Math.min(Math.max(8, pendingFill.x - POPUP_WIDTH / 2), window.innerWidth - POPUP_WIDTH - 8)
+    : 0;
+  const popupTop = pendingFill
+    ? Math.min(pendingFill.y + 16, window.innerHeight - POPUP_HEIGHT - 8)
+    : 0;
+
   return (
     <div className="flex flex-col gap-2">
+      {editMode && pendingFill && (
+        <div
+          className="fixed z-50 flex flex-wrap items-center gap-2 rounded-md border border-input bg-card px-3 py-2 text-sm shadow-md"
+          style={{ left: popupLeft, top: popupTop, width: POPUP_WIDTH }}
+        >
+          <span className="text-xs text-muted-foreground">
+            Fill {fillCount} cell{fillCount === 1 ? "" : "s"}:
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={() => applyPendingFill("series")}>
+            Fill series
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => applyPendingFill("copy")}>
+            Copy value
+          </Button>
+          <button
+            type="button"
+            onClick={() => setPendingFill(null)}
+            className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Cancel fill"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
+
       <div className="relative w-full max-w-sm">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -252,7 +368,8 @@ export function SampleTable({
       {editMode && (
         <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
-            Editing — click a cell to change it, or use the trash icon to delete a row.
+            Editing — click a cell to change it, drag its bottom-right corner to fill others, or
+            use the trash icon to delete a row. Sample ID can&apos;t be edited.
           </span>
           <div className="flex gap-2">
             <button
@@ -307,10 +424,9 @@ export function SampleTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pageSamples.map((sample) => {
+            {pageSamples.map((sample, rowIndex) => {
               const isHidden = hiddenSampleIds.has(sample.id);
               const isHighlighted = sample.id === highlightedSampleId;
-              const draft = drafts[sample.id];
               const errors = rowErrors[sample.id];
               return (
                 <Fragment key={sample.id}>
@@ -328,17 +444,44 @@ export function SampleTable({
                     </TableCell>
                     {columns.map((col) => {
                       if (editMode) {
-                        const value = draft
-                          ? (draft[col.key] ?? "")
-                          : (sampleToRawRow(sample, columns)[col.key] ?? "");
+                        if (col.key === "primary_identifier") {
+                          return (
+                            <TableCell key={col.key} className="py-1 font-mono text-sm">
+                              {sample.primary_identifier}
+                            </TableCell>
+                          );
+                        }
+                        const value = cellValue(sample, col.key);
+                        const inFillRange =
+                          fillPreview?.colKey === col.key &&
+                          rowIndex >= fillPreview.from &&
+                          rowIndex <= fillPreview.to;
                         return (
                           <TableCell key={col.key} className="py-1" onClick={(e) => e.stopPropagation()}>
-                            <Input
-                              className="h-8 min-w-28"
-                              placeholder={col.type === "date" ? DATE_FORMAT_LABEL : undefined}
-                              value={value}
-                              onChange={(e) => updateDraftField(sample, col.key, e.target.value)}
-                            />
+                            <div
+                              className={cn(
+                                "group relative rounded-sm",
+                                inFillRange && "outline outline-2 outline-offset-1 outline-primary"
+                              )}
+                              onPointerEnter={() => updateFillDrag(col.key, rowIndex)}
+                            >
+                              <Input
+                                className="h-8 min-w-28"
+                                placeholder={col.type === "date" ? DATE_FORMAT_LABEL : undefined}
+                                value={value}
+                                onChange={(e) => updateDraftField(sample, col.key, e.target.value)}
+                              />
+                              <div
+                                role="presentation"
+                                aria-hidden
+                                className="absolute -bottom-1 -right-1 size-2.5 cursor-crosshair rounded-[2px] border border-card bg-primary opacity-0 group-hover:opacity-100"
+                                style={{ touchAction: "none" }}
+                                onPointerDown={(e) => {
+                                  e.preventDefault();
+                                  startFillDrag(col.key, rowIndex);
+                                }}
+                              />
+                            </div>
                           </TableCell>
                         );
                       }
