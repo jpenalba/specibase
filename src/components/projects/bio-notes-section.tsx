@@ -5,7 +5,9 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BioNotesBlock } from "@/lib/project-bio-notes-store";
+import { Project } from "@/lib/projects-store";
 import { formatTimestampDisplay } from "@/lib/date-format";
+import { renderMarkdownToPdf } from "@/lib/markdown-pdf";
 import { MarkdownEditor } from "./markdown-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -206,6 +208,7 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,6 +260,72 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
     }
   }
 
+  // Fetches the project fresh rather than taking it as a prop — this
+  // section is only ever given a projectId, and the name is needed just
+  // for the PDF's title/filename, not for anything rendered on screen.
+  async function exportPdf() {
+    setExporting(true);
+    try {
+      const projectsData = await fetch("/api/projects").then((res) => res.json());
+      const project = (projectsData.projects ?? []).find((p: Project) => p.id === projectId) as
+        | Project
+        | undefined;
+      const title = project?.name ? `${project.name} — Bioinformatic notes` : "Bioinformatic notes";
+
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      const margin = 40;
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxWidth = doc.internal.pageSize.getWidth() - margin * 2;
+      const mdOpts = { x: margin, maxWidth, pageHeight, marginBottom: margin };
+
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text(title, margin, margin);
+      doc.setFont("helvetica", "normal");
+      let y = margin + 30;
+
+      if (blocks.length === 0) {
+        doc.setFontSize(10);
+        doc.setTextColor(140);
+        doc.text("No entries yet.", margin, y);
+        doc.setTextColor(0);
+      }
+
+      for (const block of blocks) {
+        if (y + 24 > pageHeight - margin) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text(block.title, margin, y);
+        doc.setFont("helvetica", "normal");
+        y += 16;
+
+        doc.setFontSize(9);
+        doc.setTextColor(140);
+        doc.text(formatTimestampDisplay(block.created_at), margin, y);
+        doc.setTextColor(0);
+        y += 16;
+
+        y = renderMarkdownToPdf(doc, block.content || "*Empty block.*", y, mdOpts) + 10;
+
+        if (y + 6 <= pageHeight - margin) {
+          doc.setDrawColor(220);
+          doc.line(margin, y, margin + maxWidth, y);
+          doc.setDrawColor(0);
+        }
+        y += 16;
+      }
+
+      const slug = (project?.name ?? "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      doc.save(`specibase-${slug}-bio-notes.pdf`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading...</p>;
   }
@@ -268,6 +337,12 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
           {error}
         </div>
       )}
+
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={exportPdf} disabled={exporting}>
+          {exporting ? "Exporting..." : "Export PDF"}
+        </Button>
+      </div>
 
       {blocks.length === 0 && !adding && (
         <p className="text-sm text-muted-foreground">No entries yet — add the first one below.</p>

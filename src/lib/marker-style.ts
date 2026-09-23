@@ -2,6 +2,7 @@ import { SampleRecord } from "./samples-store";
 import { MarkerStyle } from "./project-marker-styles-store";
 import { LayerShape, DEFAULT_LAYER_SHAPE } from "./layer-shapes";
 import { colorForCategoryIndex } from "./layer-colors";
+import { MapLayer } from "./layers";
 
 export type CategoryStyle = {
   // "" stands for "no value" — samples missing the chosen field group here.
@@ -56,4 +57,50 @@ export function resolveCategoryStyles(
       isOverridden: Boolean(override),
     };
   });
+}
+
+// Builds a project's Samples-tab map layer — either one flat color/shape
+// for every linked sample, or one resolved via resolveCategoryStyles per
+// sample when a marker-style field is chosen. Shared by the Samples page
+// itself and the whole-project PDF export, which renders the same map in
+// a hidden, temporary SampleMap instance and needs to build the identical
+// layer to get a matching image and legend.
+export function buildProjectMapLayer(
+  projectId: string,
+  tableSamples: SampleRecord[],
+  linkedSampleIds: Set<string>,
+  markerStyleField: string | null,
+  singleColor: string,
+  singleShape: LayerShape,
+  markerStyles: MarkerStyle[]
+): MapLayer {
+  if (!markerStyleField) {
+    return {
+      id: projectId,
+      label: "This project",
+      color: singleColor,
+      shape: singleShape,
+      sampleIds: linkedSampleIds,
+    };
+  }
+
+  const categories = resolveCategoryStyles(tableSamples, markerStyleField, markerStyles);
+  const styleByValue = new Map(categories.map((c) => [c.value, { color: c.color, shape: c.shape }]));
+  const sampleStyles = new Map(
+    tableSamples.map((s) => {
+      const raw = s[markerStyleField];
+      const value = raw === undefined || raw === null || String(raw).trim() === "" ? "" : String(raw);
+      return [s.id, styleByValue.get(value) ?? { color: singleColor, shape: singleShape }];
+    })
+  );
+
+  return {
+    id: projectId,
+    label: "This project",
+    color: singleColor,
+    shape: singleShape,
+    sampleIds: linkedSampleIds,
+    sampleStyles,
+    legendEntries: categories.map((c) => ({ label: c.label, color: c.color, shape: c.shape, count: c.count })),
+  };
 }

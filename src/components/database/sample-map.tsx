@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds } from "maplibre-gl";
 import { SampleRecord } from "@/lib/samples-store";
 import { MapLayer, ALL_LAYER_ID } from "@/lib/layers";
 import { GbifSpeciesLayer } from "@/lib/gbif-store";
 import { gbifTileUrl, GBIF_TILE_SIZE } from "@/lib/gbif";
 import { LayerShape, shapePolygonPoints } from "@/lib/layer-shapes";
+import { hexToRgb } from "@/lib/layer-colors";
 import { FieldDef } from "@/lib/fields";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
@@ -248,45 +249,70 @@ function applyMarkerStyle(
   el.innerHTML = markerShapeSvg(shape, color, size, highlighted);
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return match
-    ? [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)]
-    : [0, 0, 0];
-}
+// One legend line — either a whole layer (no per-sample styling) or one
+// category value (a layer colored by a marker-style field).
+export type MapLegendEntry = { label: string; color: string; shape: LayerShape; count: number };
 
-export function SampleMap({
-  samples,
-  layers,
-  visibleLayerIds,
-  popupColumns,
-  onSyncError,
-  hiddenSampleIds,
-  highlightedSampleId,
-  gbifLayers,
-  visibleGbifIds,
-}: {
-  samples: SampleRecord[];
-  layers: MapLayer[];
-  visibleLayerIds: Set<string>;
-  // Fields shown when a point is clicked — pass the same columns visible
-  // in the table so a marker's popup and the table row agree.
-  popupColumns: FieldDef[];
-  // Surfaces map-internal problems directly on the page instead of only
-  // in the browser console — most people using this app won't have
-  // DevTools open.
-  onSyncError?: (message: string) => void;
-  // Samples unticked in the table's per-row checkbox — excluded from the
-  // map (and the PDF export) entirely, same set regardless of active layer.
-  hiddenSampleIds: Set<string>;
-  // The sample whose table row was last clicked — its marker is drawn
-  // larger with a highlight ring, and the map pans/zooms to it.
-  highlightedSampleId: string | null;
-  // Saved GBIF species — rendered as raster tile overlays, not markers, so
-  // they're tracked entirely separately from the sample layers above.
-  gbifLayers: GbifSpeciesLayer[];
-  visibleGbifIds: Set<string>;
-}) {
+export type CapturedMapImage = {
+  dataUrl: string;
+  width: number;
+  height: number;
+  legend: MapLegendEntry[];
+  gbifLabels: string[];
+  attribution: string;
+};
+
+// Exposed so a caller that isn't the map's own "Export PDF" button (the
+// whole-project export) can grab the same rendered image + legend without
+// duplicating the canvas-compositing logic or triggering a standalone
+// map-only PDF download.
+export type SampleMapHandle = {
+  captureMapImage: () => Promise<CapturedMapImage | null>;
+  // Resolves once the map has settled (tiles loaded, no pending render) —
+  // or after an 8s safety timeout, in case something never quite settles —
+  // so a caller mounting this map purely to capture it (the whole-project
+  // export) knows when it's safe to call captureMapImage.
+  waitUntilIdle: () => Promise<void>;
+};
+
+export const SampleMap = forwardRef<
+  SampleMapHandle,
+  {
+    samples: SampleRecord[];
+    layers: MapLayer[];
+    visibleLayerIds: Set<string>;
+    // Fields shown when a point is clicked — pass the same columns visible
+    // in the table so a marker's popup and the table row agree.
+    popupColumns: FieldDef[];
+    // Surfaces map-internal problems directly on the page instead of only
+    // in the browser console — most people using this app won't have
+    // DevTools open.
+    onSyncError?: (message: string) => void;
+    // Samples unticked in the table's per-row checkbox — excluded from the
+    // map (and the PDF export) entirely, same set regardless of active layer.
+    hiddenSampleIds: Set<string>;
+    // The sample whose table row was last clicked — its marker is drawn
+    // larger with a highlight ring, and the map pans/zooms to it.
+    highlightedSampleId: string | null;
+    // Saved GBIF species — rendered as raster tile overlays, not markers, so
+    // they're tracked entirely separately from the sample layers above.
+    gbifLayers: GbifSpeciesLayer[];
+    visibleGbifIds: Set<string>;
+  }
+>(function SampleMap(
+  {
+    samples,
+    layers,
+    visibleLayerIds,
+    popupColumns,
+    onSyncError,
+    hiddenSampleIds,
+    highlightedSampleId,
+    gbifLayers,
+    visibleGbifIds,
+  },
+  ref
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   // Tracks each marker's sample id, shape/color, and base (non-highlighted)
@@ -545,69 +571,125 @@ export function SampleMap({
     map.fitBounds(bounds, { padding: 48, maxZoom: 10, duration: 300 });
   }
 
-  async function exportPdf() {
+  // Composites the map's WebGL canvas with its DOM markers (invisible to
+  // WebGL, so redrawn here at their true projected position) into one PNG,
+  // plus the legend/attribution text that goes with it — shared by this
+  // component's own "Export PDF" button below and by a caller assembling a
+  // larger, multi-section PDF (the whole-project export) that just wants
+  // the image without a standalone map-only PDF download.
+  async function captureMapImage(): Promise<CapturedMapImage | null> {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map) return null;
+
+    // Force a fresh frame before reading the canvas back out, otherwise a
+    // stale or partially-cleared buffer can get captured.
+    map.triggerRepaint();
+    await new Promise((resolve) => map.once("render", resolve));
+
+    const mapCanvas = map.getCanvas();
+    const dpr = window.devicePixelRatio || 1;
+    const width = mapCanvas.width;
+    const height = mapCanvas.height;
+
+    const composite = document.createElement("canvas");
+    composite.width = width;
+    composite.height = height;
+    const ctx = composite.getContext("2d");
+    if (!ctx) throw new Error("Canvas is not supported in this browser");
+    ctx.drawImage(mapCanvas, 0, 0, width, height);
+
+    const points = computeVisiblePoints(
+      samples,
+      layers,
+      visibleLayerIds,
+      hiddenSampleIds,
+      highlightedIdRef.current
+    );
+    for (const { point, color, shape, size, isHighlighted } of points) {
+      const projected = map.project(point);
+      const x = projected.x * dpr;
+      const y = projected.y * dpr;
+      const drawSize = displaySize(size, isHighlighted) * dpr;
+      const strokeWidth = (isHighlighted ? 3 : 2) * dpr;
+      const padding = strokeWidth / 2 + dpr;
+
+      ctx.fillStyle = color;
+      ctx.strokeStyle = isHighlighted ? HIGHLIGHT_RING_COLOR : "#ffffff";
+      ctx.lineWidth = strokeWidth;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      if (shape === "circle") {
+        ctx.arc(x, y, drawSize / 2 - padding, 0, Math.PI * 2);
+      } else {
+        const offset = drawSize / 2;
+        shapePolygonPoints(shape, drawSize, padding)!.forEach(([px, py], i) => {
+          const vx = x - offset + px;
+          const vy = y - offset + py;
+          if (i === 0) ctx.moveTo(vx, vy);
+          else ctx.lineTo(vx, vy);
+        });
+        ctx.closePath();
+      }
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    const legend: MapLegendEntry[] = [];
+    for (const layer of layers.filter((l) => visibleLayerIds.has(l.id))) {
+      if (layer.legendEntries) legend.push(...layer.legendEntries);
+      else legend.push({ label: layer.label, color: layer.color, shape: layer.shape, count: layer.sampleIds.size });
+    }
+    const gbifLabels = gbifLayers
+      .filter((g) => visibleGbifIds.has(g.id))
+      .map((g) => `GBIF: ${g.scientific_name}`);
+
+    const attributionParts = [BASEMAPS[basemap].attribution];
+    if (gbifLabels.length > 0) attributionParts.push("GBIF.org");
+
+    return {
+      dataUrl: composite.toDataURL("image/png"),
+      width,
+      height,
+      legend,
+      gbifLabels,
+      attribution: attributionParts.filter(Boolean).join(" · "),
+    };
+  }
+
+  // Polls briefly for mapRef to exist before attaching the listener —
+  // called right after this component is first mounted (the whole-project
+  // export's use case), the map constructor's own effect may not have run
+  // yet, so mapRef.current can still be null for a moment.
+  function waitUntilIdle(): Promise<void> {
+    const deadline = Date.now() + 8000;
+    return new Promise((resolve) => {
+      function check() {
+        const map = mapRef.current;
+        if (map) {
+          const timer = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+          map.once("idle", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          return;
+        }
+        if (Date.now() > deadline) {
+          resolve();
+          return;
+        }
+        setTimeout(check, 50);
+      }
+      check();
+    });
+  }
+
+  useImperativeHandle(ref, () => ({ captureMapImage, waitUntilIdle }));
+
+  async function exportPdf() {
     setExporting(true);
     try {
-      // Force a fresh frame before reading the canvas back out, otherwise
-      // a stale or partially-cleared buffer can get captured.
-      map.triggerRepaint();
-      await new Promise((resolve) => map.once("render", resolve));
-
-      const mapCanvas = map.getCanvas();
-      const dpr = window.devicePixelRatio || 1;
-      const width = mapCanvas.width;
-      const height = mapCanvas.height;
-
-      const composite = document.createElement("canvas");
-      composite.width = width;
-      composite.height = height;
-      const ctx = composite.getContext("2d");
-      if (!ctx) throw new Error("Canvas is not supported in this browser");
-      ctx.drawImage(mapCanvas, 0, 0, width, height);
-
-      // Markers are DOM elements, invisible to the WebGL canvas — redrawn
-      // here at their true projected position so the export matches what's
-      // actually on screen (hidden samples excluded, the highlighted one
-      // drawn with the same ring it has on screen).
-      const points = computeVisiblePoints(
-        samples,
-        layers,
-        visibleLayerIds,
-        hiddenSampleIds,
-        highlightedIdRef.current
-      );
-      for (const { point, color, shape, size, isHighlighted } of points) {
-        const projected = map.project(point);
-        const x = projected.x * dpr;
-        const y = projected.y * dpr;
-        const drawSize = displaySize(size, isHighlighted) * dpr;
-        const strokeWidth = (isHighlighted ? 3 : 2) * dpr;
-        const padding = strokeWidth / 2 + dpr;
-
-        ctx.fillStyle = color;
-        ctx.strokeStyle = isHighlighted ? HIGHLIGHT_RING_COLOR : "#ffffff";
-        ctx.lineWidth = strokeWidth;
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        if (shape === "circle") {
-          ctx.arc(x, y, drawSize / 2 - padding, 0, Math.PI * 2);
-        } else {
-          const offset = drawSize / 2;
-          shapePolygonPoints(shape, drawSize, padding)!.forEach(([px, py], i) => {
-            const vx = x - offset + px;
-            const vy = y - offset + py;
-            if (i === 0) ctx.moveTo(vx, vy);
-            else ctx.lineTo(vx, vy);
-          });
-          ctx.closePath();
-        }
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      const imageData = composite.toDataURL("image/png");
+      const captured = await captureMapImage();
+      if (!captured) return;
 
       const { jsPDF } = await import("jspdf");
       const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
@@ -623,20 +705,14 @@ export function SampleMap({
       doc.text(new Date().toLocaleString(), margin, margin + 14);
 
       const imageTop = margin + 28;
-      const legendLayers = layers.filter((l) => visibleLayerIds.has(l.id));
-      const legendGbifLayers = gbifLayers.filter((g) => visibleGbifIds.has(g.id));
-      const legendLineCount = legendLayers.reduce(
-        (n, l) => n + (l.legendEntries?.length ?? 1),
-        0
-      );
-      const legendHeight = 16 + (legendLineCount + legendGbifLayers.length) * 14;
+      const legendHeight = 16 + (captured.legend.length + captured.gbifLabels.length) * 14;
       const maxImgWidth = pageWidth - margin * 2;
       const maxImgHeight = pageHeight - imageTop - margin - legendHeight;
-      const scale = Math.min(maxImgWidth / width, maxImgHeight / height);
-      const imgWidth = width * scale;
-      const imgHeight = height * scale;
+      const scale = Math.min(maxImgWidth / captured.width, maxImgHeight / captured.height);
+      const imgWidth = captured.width * scale;
+      const imgHeight = captured.height * scale;
 
-      doc.addImage(imageData, "PNG", margin, imageTop, imgWidth, imgHeight);
+      doc.addImage(captured.dataUrl, "PNG", margin, imageTop, imgWidth, imgHeight);
 
       let legendY = imageTop + imgHeight + 20;
       doc.setFontSize(9);
@@ -660,28 +736,19 @@ export function SampleMap({
         doc.text(text, margin + 14, legendY);
         legendY += 14;
       }
-      for (const layer of legendLayers) {
-        if (layer.legendEntries) {
-          for (const entry of layer.legendEntries) {
-            drawLegendLine(entry.color, entry.shape, `${entry.label} (${entry.count})`);
-          }
-        } else {
-          drawLegendLine(layer.color, layer.shape, `${layer.label} (${layer.sampleIds.size})`);
-        }
+      for (const entry of captured.legend) {
+        drawLegendLine(entry.color, entry.shape, `${entry.label} (${entry.count})`);
       }
-      for (const species of legendGbifLayers) {
+      for (const label of captured.gbifLabels) {
         doc.setTextColor(30, 30, 30);
-        doc.text(`GBIF: ${species.scientific_name}`, margin + 14, legendY);
+        doc.text(label, margin + 14, legendY);
         legendY += 14;
       }
 
-      const attributionParts = [BASEMAPS[basemap].attribution];
-      if (legendGbifLayers.length > 0) attributionParts.push("GBIF.org");
-      const attribution = attributionParts.filter(Boolean).join(" · ");
-      if (attribution) {
+      if (captured.attribution) {
         doc.setFontSize(7);
         doc.setTextColor(140, 140, 140);
-        doc.text(attribution, margin, pageHeight - 12);
+        doc.text(captured.attribution, margin, pageHeight - 12);
       }
 
       doc.save(`specibase-map-${Date.now()}.pdf`);
@@ -724,4 +791,4 @@ export function SampleMap({
       </div>
     </div>
   );
-}
+});

@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { Project } from "@/lib/projects-store";
 import { FocalGroupIcon } from "@/components/projects/focal-group-icon";
 import { ProjectStatusBadge } from "@/components/projects/project-status-badge";
+import { ProjectExportDialog } from "@/components/projects/project-export-dialog";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -95,6 +96,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                 <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
               )}
             </div>
+            <ProjectExportDialog projectId={projectId} />
           </div>
         )}
 

@@ -37,3 +37,12 @@ export const PICKABLE_LAYER_COLORS = CATEGORICAL_HEX;
 export function colorForCategoryIndex(index: number): string {
   return CATEGORICAL_HEX[index % CATEGORICAL_HEX.length];
 }
+
+// Shared by anything drawing a legend swatch on an HTML5 canvas or into a
+// jsPDF page, both of which want [r,g,b] rather than a hex string.
+export function hexToRgb(hex: string): [number, number, number] {
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return match
+    ? [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)]
+    : [0, 0, 0];
+}

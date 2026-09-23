@@ -14,6 +14,7 @@ import {
 } from "@/lib/lab-workflows-store";
 import { SampleRecord } from "@/lib/samples-store";
 import { EntryStatus } from "@/lib/lab-workflow-status";
+import { detailTableToCsv, downloadTextFile } from "@/lib/csv";
 import { STEP_PRESETS } from "@/lib/lab-workflow-steps";
 import { DETAIL_COLUMN_PRESETS, DetailColumnPreset } from "@/lib/lab-workflow-detail-columns";
 import { WorkflowStatusBadge } from "./workflow-status-badge";
@@ -349,6 +350,15 @@ export function WorkflowSection({
     }
   }
 
+  // All enrolled samples' rows, not just the current page — the Detailed
+  // view paginates what it renders, but an export should cover the whole
+  // workflow.
+  function exportDetailCsv() {
+    const csv = detailTableToCsv(enrolledSamples, detailRows, detailColumns, detailValues);
+    const slug = workflow!.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    downloadTextFile(`specibase-${slug}-detailed.csv`, csv, "text/csv;charset=utf-8;");
+  }
+
   function handleCancelEdits() {
     setDirtyEntryKeys(new Set());
     setDirtyValueKeys(new Set());
@@ -460,20 +470,32 @@ export function WorkflowSection({
         </div>
       </div>
 
-      <div className="flex w-fit overflow-hidden rounded-md border border-input">
-        {(["simple", "detailed"] as ViewMode[]).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => setView(mode)}
-            className={cn(
-              "px-3 py-1.5 text-sm capitalize",
-              view === mode ? "bg-primary text-primary-foreground" : "hover:bg-accent"
-            )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex w-fit overflow-hidden rounded-md border border-input">
+          {(["simple", "detailed"] as ViewMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setView(mode)}
+              className={cn(
+                "px-3 py-1.5 text-sm capitalize",
+                view === mode ? "bg-primary text-primary-foreground" : "hover:bg-accent"
+              )}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+        {view === "detailed" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportDetailCsv}
+            disabled={enrolledSamples.length === 0}
           >
-            {mode}
-          </button>
-        ))}
+            Export CSV
+          </Button>
+        )}
       </div>
 
       {view === "simple" ? (

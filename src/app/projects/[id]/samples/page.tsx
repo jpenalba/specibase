@@ -11,7 +11,7 @@ import { getVisibleColumns } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
 import { MarkerStyle } from "@/lib/project-marker-styles-store";
-import { resolveCategoryStyles } from "@/lib/marker-style";
+import { buildProjectMapLayer, resolveCategoryStyles } from "@/lib/marker-style";
 import { SampleMap } from "@/components/database/sample-map";
 import { SampleTable } from "@/components/samples/sample-table";
 import { FieldPicker } from "@/components/samples/field-picker";
@@ -107,39 +107,19 @@ export default function ProjectSamplesPage() {
     [markerStyleField, tableSamples, markerStyles]
   );
 
-  const layer: MapLayer = useMemo(() => {
-    if (!markerStyleField) {
-      return {
-        id: projectId,
-        label: "This project",
-        color: singleColor,
-        shape: singleShape,
-        sampleIds: linkedSampleIds,
-      };
-    }
-    const styleByValue = new Map(categories.map((c) => [c.value, { color: c.color, shape: c.shape }]));
-    const sampleStyles = new Map(
-      tableSamples.map((s) => {
-        const raw = s[markerStyleField];
-        const value = raw === undefined || raw === null || String(raw).trim() === "" ? "" : String(raw);
-        return [s.id, styleByValue.get(value) ?? { color: singleColor, shape: singleShape }];
-      })
-    );
-    return {
-      id: projectId,
-      label: "This project",
-      color: singleColor,
-      shape: singleShape,
-      sampleIds: linkedSampleIds,
-      sampleStyles,
-      legendEntries: categories.map((c) => ({
-        label: c.label,
-        color: c.color,
-        shape: c.shape,
-        count: c.count,
-      })),
-    };
-  }, [projectId, linkedSampleIds, markerStyleField, singleColor, singleShape, categories, tableSamples]);
+  const layer: MapLayer = useMemo(
+    () =>
+      buildProjectMapLayer(
+        projectId,
+        tableSamples,
+        linkedSampleIds,
+        markerStyleField,
+        singleColor,
+        singleShape,
+        markerStyles
+      ),
+    [projectId, tableSamples, linkedSampleIds, markerStyleField, singleColor, singleShape, markerStyles]
+  );
   const visibleLayerIds = useMemo(() => new Set([projectId]), [projectId]);
 
   async function patchProject(patch: Record<string, unknown>) {
