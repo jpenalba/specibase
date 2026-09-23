@@ -78,6 +78,7 @@ The original roadmap's phases don't map cleanly onto what shipped, so here's eve
 | 12 | Per-project collaborator invites | **Covered by #6's plan** | See [`AUTH_AND_PERMISSIONS_PLAN.md`](./AUTH_AND_PERMISSIONS_PLAN.md) — the collaborator tier and per-project "Add member" flow are Phases 2–3 there. |
 | 13 | Public/read-only project view (e.g. for a paper's data-availability statement) | **Worth pulling forward independently** | Unlike full collaborator invites, a single opaque share-token URL for one project doesn't need full auth — it's the one piece of the original "collaboration" phase that fits the current architecture without waiting on #6. |
 | 14 | Publish back to GBIF as an occurrence dataset | **Skip** | Niche and speculative — nothing so far suggests this is actually needed. |
+| 15 | Automatic whole-database archiving (daily/weekly/monthly, last 3 kept) | **In design** | Design doc: [`ARCHIVING_PLAN.md`](./ARCHIVING_PLAN.md) — Postgres schema-cloning + `pg_cron`, not implemented. The narrower, more common need (undo one bad delete or import) shipped instead as the Undo feature on the Logs page; this covers the broader, blunter case Undo can't. |
 
 ## Open questions (updated)
 
