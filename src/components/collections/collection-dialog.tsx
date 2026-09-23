@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Collection } from "@/lib/collections-store";
+import { COLLECTION_TYPES, COLLECTION_TYPE_LABELS, CollectionType } from "@/lib/collection-types";
 import { parseDDMMYYYY, DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ type FormState = {
   focalGroup: string;
   location: string;
   contacts: string;
+  collectionType: CollectionType;
 };
 
 function todayDDMMYYYY(): string {
@@ -43,6 +45,7 @@ function emptyForm(): FormState {
     focalGroup: "",
     location: "",
     contacts: "",
+    collectionType: "other",
   };
 }
 
@@ -54,6 +57,7 @@ function formFromCollection(collection: Collection): FormState {
     focalGroup: collection.focal_group ?? "",
     location: collection.location ?? "",
     contacts: collection.contacts ?? "",
+    collectionType: collection.collection_type,
   };
 }
 
@@ -127,6 +131,7 @@ export function CollectionDialog({
           focal_group: values.focalGroup,
           location: values.location,
           contacts: values.contacts,
+          collection_type: values.collectionType,
         }),
       });
       const data = await res.json();
@@ -174,6 +179,22 @@ export function CollectionDialog({
               value={values.name}
               onChange={(e) => update("name", e.target.value)}
             />
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="collection-type">Collection type *</Label>
+            <select
+              id="collection-type"
+              value={values.collectionType}
+              onChange={(e) => update("collectionType", e.target.value as CollectionType)}
+              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {COLLECTION_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {COLLECTION_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="grid gap-1.5">

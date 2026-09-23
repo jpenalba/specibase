@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ChevronRight, Plus, X } from "lucide-react";
 import { MapLayer } from "@/lib/layers";
 import { LayerShape } from "@/lib/layer-shapes";
 import { GbifSpeciesLayer } from "@/lib/gbif-store";
+import { CollectionLayer, groupCollectionLayersByType } from "@/lib/collection-layers";
+import { CollectionType, COLLECTION_TYPE_GROUP_LABELS } from "@/lib/collection-types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StylePicker } from "./style-picker";
 import { AddGbifSpeciesDialog } from "./add-gbif-species-dialog";
@@ -140,9 +143,101 @@ function GbifGroup({
   );
 }
 
+// A collection's row — same shape as LayerRow (checkbox, StylePicker,
+// sample count), but the label links out to that collection's own sample
+// list instead of selecting it "active" for the table below, since a
+// collection's samples live in their own table and the shared
+// SampleTable/edit flow only knows how to talk to the main `samples` API.
+function CollectionLayerRow({
+  layer,
+  visible,
+  onToggleVisible,
+  onSetColor,
+  onSetShape,
+}: {
+  layer: CollectionLayer;
+  visible: boolean;
+  onToggleVisible: () => void;
+  onSetColor: (color: string) => void;
+  onSetShape: (shape: LayerShape) => void;
+}) {
+  return (
+    <div className="ml-5 flex items-center gap-2 rounded-md px-2 py-1.5">
+      <Checkbox checked={visible} onCheckedChange={onToggleVisible} />
+      <StylePicker
+        color={layer.color}
+        shape={layer.shape}
+        label={layer.label}
+        onSetColor={onSetColor}
+        onSetShape={onSetShape}
+      />
+      <Link
+        href={`/collections/${layer.id}/samples`}
+        className="flex-1 truncate text-sm text-foreground hover:underline"
+        title={`View ${layer.label}'s own sample list`}
+      >
+        {layer.label}
+      </Link>
+      <span className="text-xs text-muted-foreground">{layer.sampleIds.size}</span>
+    </div>
+  );
+}
+
+// One collapsible folder per collection type (Field/Museum/Collaborator/
+// Other), same expand/collapse pattern as GbifGroup — unlike GbifGroup,
+// there's no "add" button here, since collections are created from the
+// Collections page, not from this panel.
+function CollectionTypeGroup({
+  type,
+  layers,
+  visibleLayerIds,
+  onToggleVisible,
+  onSetColor,
+  onSetShape,
+}: {
+  type: CollectionType;
+  layers: CollectionLayer[];
+  visibleLayerIds: Set<string>;
+  onToggleVisible: (layerId: string) => void;
+  onSetColor: (layerId: string, color: string) => void;
+  onSetShape: (layerId: string, shape: LayerShape) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const label = COLLECTION_TYPE_GROUP_LABELS[type];
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="flex size-5 shrink-0 items-center justify-center rounded hover:bg-accent"
+          aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
+          aria-expanded={expanded}
+        >
+          <ChevronRight className={cn("size-4 transition-transform", expanded && "rotate-90")} />
+        </button>
+        <span className="flex-1 truncate text-sm font-medium">{label}</span>
+      </div>
+      {expanded &&
+        layers.map((layer) => (
+          <CollectionLayerRow
+            key={layer.id}
+            layer={layer}
+            visible={visibleLayerIds.has(layer.id)}
+            onToggleVisible={() => onToggleVisible(layer.id)}
+            onSetColor={(color) => onSetColor(layer.id, color)}
+            onSetShape={(shape) => onSetShape(layer.id, shape)}
+          />
+        ))}
+    </div>
+  );
+}
+
 export function LayerPanel({
   root,
   projectLayers,
+  collectionLayers,
   visibleLayerIds,
   activeLayerId,
   onToggleVisible,
@@ -157,6 +252,7 @@ export function LayerPanel({
 }: {
   root: MapLayer;
   projectLayers: MapLayer[];
+  collectionLayers: CollectionLayer[];
   visibleLayerIds: Set<string>;
   activeLayerId: string;
   onToggleVisible: (layerId: string) => void;
@@ -169,6 +265,7 @@ export function LayerPanel({
   onGbifAdded: (layer: GbifSpeciesLayer) => void;
   onGbifRemoved: (id: string) => void;
 }) {
+  const collectionGroups = groupCollectionLayersByType(collectionLayers);
   return (
     <div className="flex h-full flex-col gap-1 overflow-y-auto rounded-lg border border-border p-2">
       <p className="px-2 pt-1 pb-2 text-xs font-medium text-muted-foreground">
@@ -202,6 +299,24 @@ export function LayerPanel({
             onSelectActive={() => onSelectActive(layer.id)}
             onSetColor={(color) => onSetColor(layer.id, color)}
             onSetShape={(shape) => onSetShape(layer.id, shape)}
+          />
+        ))
+      )}
+
+      <div className="my-1 border-t border-border" />
+
+      {collectionGroups.length === 0 ? (
+        <p className="px-2 py-1.5 text-xs text-muted-foreground">No collections yet</p>
+      ) : (
+        collectionGroups.map(({ type, layers }) => (
+          <CollectionTypeGroup
+            key={type}
+            type={type}
+            layers={layers}
+            visibleLayerIds={visibleLayerIds}
+            onToggleVisible={onToggleVisible}
+            onSetColor={onSetColor}
+            onSetShape={onSetShape}
           />
         ))
       )}

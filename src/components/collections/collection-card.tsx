@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { Pencil, ListChecks } from "lucide-react";
+import { Pencil, ListChecks, DatabaseZap } from "lucide-react";
 import { Collection } from "@/lib/collections-store";
+import { COLLECTION_TYPE_LABELS } from "@/lib/collection-types";
 import { parseCollaborators } from "@/lib/collaborators";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import { CollectionIcon } from "./collection-icon";
@@ -28,12 +32,59 @@ export function CollectionCard({
   onSaved: () => void;
 }) {
   const contacts = parseCollaborators(collection.contacts);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+
+  async function handleImport() {
+    if (
+      !window.confirm(
+        `Add all ${sampleCount} sample(s) from "${collection.name}" to the main database? This collection's own record is kept either way.`
+      )
+    ) {
+      return;
+    }
+    setImporting(true);
+    setImportMessage(null);
+    try {
+      const res = await fetch(`/api/collections/${collection.id}/import-to-database`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImportMessage(data.errors?.join(" ") ?? "Couldn't add these samples to the main database.");
+        return;
+      }
+      if (data.duplicateIds?.length > 0) {
+        setImportMessage(
+          `Nothing added — these Sample IDs already exist in the main database: ${data.duplicateIds.join(", ")}`
+        );
+      } else {
+        const inserted = data.inserted?.length ?? 0;
+        const skipped = data.skipped?.length ?? 0;
+        setImportMessage(
+          `Added ${inserted} sample${inserted === 1 ? "" : "s"} to the main database.` +
+            (skipped > 0 ? ` ${skipped} row(s) were skipped — see console for details.` : "")
+        );
+        if (skipped > 0) console.warn("Collection import skipped rows:", data.skipped);
+      }
+    } catch {
+      setImportMessage("Couldn't reach the server.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="flex-row items-start gap-3 space-y-0">
         <CollectionIcon />
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-semibold">{collection.name}</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate font-semibold">{collection.name}</h3>
+            <span className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground">
+              {COLLECTION_TYPE_LABELS[collection.collection_type]}
+            </span>
+          </div>
           {collection.description && (
             <p className="text-sm text-muted-foreground">{collection.description}</p>
           )}
@@ -74,16 +125,31 @@ export function CollectionCard({
           )}
         </dl>
       </CardContent>
-      <CardFooter className="justify-between">
-        <p className="text-xs text-muted-foreground">
-          {sampleCount} sample{sampleCount === 1 ? "" : "s"}
-        </p>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/collections/${collection.id}/samples`}>
-            <ListChecks className="size-4" />
-            Sample list
-          </Link>
-        </Button>
+      <CardFooter className="flex-col items-stretch gap-2">
+        {importMessage && <p className="text-xs text-muted-foreground">{importMessage}</p>}
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            {sampleCount} sample{sampleCount === 1 ? "" : "s"}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleImport}
+              disabled={importing || sampleCount === 0}
+              title="Copy this collection's samples into the main database"
+            >
+              <DatabaseZap className="size-4" />
+              {importing ? "Adding..." : "Add to main database"}
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/collections/${collection.id}/samples`}>
+                <ListChecks className="size-4" />
+                Sample list
+              </Link>
+            </Button>
+          </div>
+        </div>
       </CardFooter>
     </Card>
   );

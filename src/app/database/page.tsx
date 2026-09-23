@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SampleRecord } from "@/lib/samples-store";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
 import { GbifSpeciesLayer } from "@/lib/gbif-store";
+import { Collection, CollectionSample } from "@/lib/collections-store";
 import { buildLayers, ALL_LAYER_ID, LayerStyle } from "@/lib/layers";
+import { buildCollectionLayers } from "@/lib/collection-layers";
 import { LayerShape } from "@/lib/layer-shapes";
 import { getVisibleColumns } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
@@ -24,6 +26,9 @@ export default function DatabasePage() {
   const [samplesError, setSamplesError] = useState<string | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [gbifError, setGbifError] = useState<string | null>(null);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [collectionSamples, setCollectionSamples] = useState<CollectionSample[]>([]);
+  const [collectionsError, setCollectionsError] = useState<string | null>(null);
   const [visibleLayerIds, setVisibleLayerIds] = useState<Set<string>>(
     new Set([ALL_LAYER_ID])
   );
@@ -83,6 +88,31 @@ export default function DatabasePage() {
       .catch(() => {
         if (!cancelled) setGbifError("Couldn't reach the server.");
       });
+
+    // Also independent — collections are their own map layer group (see
+    // LayerPanel's per-type folders) and shouldn't block anything above.
+    Promise.all([
+      fetch("/api/collections").then((res) => res.json()),
+      fetch("/api/collections/samples").then((res) => res.json()),
+    ])
+      .then(([collectionsData, samplesData]) => {
+        if (cancelled) return;
+        if (collectionsData.errors?.length > 0) {
+          setCollectionsError(collectionsData.errors.join(" "));
+          return;
+        }
+        if (samplesData.errors?.length > 0) {
+          setCollectionsError(samplesData.errors.join(" "));
+          return;
+        }
+        setCollectionsError(null);
+        setCollections(collectionsData.collections ?? []);
+        setCollectionSamples(samplesData.samples ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCollectionsError("Couldn't reach the server.");
+      });
+
     return () => {
       cancelled = true;
     };
@@ -92,6 +122,16 @@ export default function DatabasePage() {
     () => buildLayers(samples, projects, links, layerStyles),
     [samples, projects, links, layerStyles]
   );
+  const collectionLayers = useMemo(
+    () => buildCollectionLayers(collections, collectionSamples, layerStyles),
+    [collections, collectionSamples, layerStyles]
+  );
+  // The map draws every kind of layer uniformly, so its own samples/layers
+  // props get the combined pool — collection samples have their own ids
+  // (never colliding with a main sample's), and only appear on the map
+  // via their own layer's sampleIds, never in the table below.
+  const mapSamples = useMemo(() => [...samples, ...collectionSamples], [samples, collectionSamples]);
+  const mapLayers = useMemo(() => [root, ...children, ...collectionLayers], [root, children, collectionLayers]);
   const allLayers = useMemo(() => [root, ...children], [root, children]);
 
   const activeLayer = allLayers.find((l) => l.id === activeLayerId) ?? root;
@@ -237,6 +277,15 @@ export default function DatabasePage() {
           in the Supabase SQL Editor.
         </div>
       )}
+      {collectionsError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          Couldn&apos;t load collections: {collectionsError}. If you haven&apos;t already, run{" "}
+          <code className="rounded bg-black/10 px-1">
+            supabase/migrations/0017_collection_types.sql
+          </code>{" "}
+          in the Supabase SQL Editor.
+        </div>
+      )}
       {mapSyncError && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           The map couldn&apos;t draw the points: {mapSyncError}
@@ -246,8 +295,8 @@ export default function DatabasePage() {
       <div className="flex h-[55vh] min-h-[420px] gap-4">
         <div className="flex-1 overflow-hidden rounded-lg border border-border">
           <SampleMap
-            samples={samples}
-            layers={allLayers}
+            samples={mapSamples}
+            layers={mapLayers}
             visibleLayerIds={visibleLayerIds}
             popupColumns={popupColumns}
             onSyncError={setMapSyncError}
@@ -261,6 +310,7 @@ export default function DatabasePage() {
           <LayerPanel
             root={root}
             projectLayers={children}
+            collectionLayers={collectionLayers}
             visibleLayerIds={visibleLayerIds}
             activeLayerId={activeLayerId}
             onToggleVisible={toggleVisible}

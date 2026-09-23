@@ -1,6 +1,7 @@
 import { getSupabase } from "./supabase";
 import { RawRow, validateRow } from "./validation";
 import { normalizeDatesForStorage } from "./samples-store";
+import { CollectionType } from "./collection-types";
 
 const COLLECTIONS_TABLE = "collections";
 const SAMPLES_TABLE = "collection_samples";
@@ -20,6 +21,9 @@ export type Collection = {
   // Free-text, comma-separated — see parseCollaborators() in
   // @/lib/collaborators for turning this into a list for display.
   contacts: string | null;
+  // Groups this collection into a folder on the database map's layer
+  // panel — see src/lib/collection-types.ts.
+  collection_type: CollectionType;
 };
 
 export type NewCollectionInput = {
@@ -29,6 +33,7 @@ export type NewCollectionInput = {
   focal_group?: string;
   location?: string;
   contacts?: string;
+  collection_type?: CollectionType;
 };
 
 export type UpdateCollectionInput = Partial<NewCollectionInput>;
@@ -46,6 +51,7 @@ export async function createCollection(input: NewCollectionInput): Promise<Colle
       focal_group: input.focal_group?.trim() || null,
       location: input.location?.trim() || null,
       contacts: input.contacts?.trim() || null,
+      collection_type: input.collection_type ?? "other",
     })
     .select()
     .single();
@@ -72,6 +78,7 @@ export async function updateCollection(
   if (input.focal_group !== undefined) patch.focal_group = input.focal_group.trim() || null;
   if (input.location !== undefined) patch.location = input.location.trim() || null;
   if (input.contacts !== undefined) patch.contacts = input.contacts.trim() || null;
+  if (input.collection_type !== undefined) patch.collection_type = input.collection_type;
 
   const { data, error } = await getSupabase()
     .from(COLLECTIONS_TABLE)
@@ -124,6 +131,15 @@ export async function listCollectionSamples(collectionId: string): Promise<Colle
     .select("*")
     .eq("collection_id", collectionId)
     .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CollectionSample[];
+}
+
+// Every sample across every collection, each still carrying its own
+// collection_id — used by the database map to draw one layer per
+// collection without an N+1 fetch per collection.
+export async function listAllCollectionSamples(): Promise<CollectionSample[]> {
+  const { data, error } = await getSupabase().from(SAMPLES_TABLE).select("*");
   if (error) throw new Error(error.message);
   return (data ?? []) as CollectionSample[];
 }

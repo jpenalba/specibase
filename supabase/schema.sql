@@ -82,7 +82,11 @@ create table if not exists collections (
   date_added date not null default current_date,
   focal_group text,
   location text,
-  contacts text
+  contacts text,
+  -- Groups this collection into a folder on the database map's layer
+  -- panel — see supabase/migrations/0017_collection_types.sql.
+  collection_type text not null default 'other'
+    check (collection_type in ('field', 'museum', 'collaborator', 'other'))
 );
 
 create table if not exists collection_samples (

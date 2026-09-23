@@ -20,6 +20,9 @@ export async function PATCH(
     }
 
     const fields = parseCollectionFields(body);
+    if ("error" in fields) {
+      return NextResponse.json({ errors: [fields.error] }, { status: 400 });
+    }
     if (fields.date_added !== undefined && !fields.date_added.trim()) {
       return NextResponse.json({ errors: ["Date added is required"] }, { status: 400 });
     }
