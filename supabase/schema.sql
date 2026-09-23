@@ -215,6 +215,34 @@ create table if not exists lab_workflow_custom_values (
 create index if not exists lab_workflow_custom_columns_workflow_id_idx on lab_workflow_custom_columns (workflow_id);
 create index if not exists lab_workflow_custom_values_sample_id_idx on lab_workflow_custom_values (sample_id);
 
+-- The Detailed view's single, fully customizable table per workflow — see
+-- supabase/migrations/0012_lab_workflow_detail_columns.sql. Sample ID isn't
+-- stored (comes from `samples`); Status (kind = 'status') is seeded by
+-- application code (createWorkflow) for every new workflow.
+create table if not exists lab_workflow_detail_columns (
+  id uuid primary key default gen_random_uuid(),
+  workflow_id uuid not null references lab_workflows (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  position integer not null,
+  label text not null,
+  kind text not null default 'text' check (kind in ('text', 'date', 'status'))
+);
+
+create table if not exists lab_workflow_detail_values (
+  id uuid primary key default gen_random_uuid(),
+  column_id uuid not null references lab_workflow_detail_columns (id) on delete cascade,
+  sample_id uuid not null references samples (id) on delete cascade,
+  updated_at timestamptz not null default now(),
+
+  value text,
+
+  unique (column_id, sample_id)
+);
+
+create index if not exists lab_workflow_detail_columns_workflow_id_idx on lab_workflow_detail_columns (workflow_id);
+create index if not exists lab_workflow_detail_values_sample_id_idx on lab_workflow_detail_values (sample_id);
+
 -- No client code ever talks to Supabase directly (the app's own API routes
 -- do, using the service role key, which bypasses RLS) — this just makes
 -- sure that stays true if an anon-key client ever gets added by mistake.
@@ -231,6 +259,8 @@ alter table lab_workflow_entries enable row level security;
 alter table project_references enable row level security;
 alter table lab_workflow_custom_columns enable row level security;
 alter table lab_workflow_custom_values enable row level security;
+alter table lab_workflow_detail_columns enable row level security;
+alter table lab_workflow_detail_values enable row level security;
 
 -- Public bucket for images inserted into a project's Background markdown
 -- (see src/app/api/projects/[id]/background/images) — public because the

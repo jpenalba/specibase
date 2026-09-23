@@ -7,6 +7,8 @@ const SAMPLES_TABLE = "lab_workflow_samples";
 const ENTRIES_TABLE = "lab_workflow_entries";
 const CUSTOM_COLUMNS_TABLE = "lab_workflow_custom_columns";
 const CUSTOM_VALUES_TABLE = "lab_workflow_custom_values";
+const DETAIL_COLUMNS_TABLE = "lab_workflow_detail_columns";
+const DETAIL_VALUES_TABLE = "lab_workflow_detail_values";
 
 export type WorkflowStatus = "in_progress" | "completed";
 
@@ -75,7 +77,8 @@ export type NewStepInput = { step_key: string; label: string };
 
 // Creates the workflow and its initial steps together — a workflow with no
 // steps isn't a useful intermediate state, so the dialog that creates one
-// always submits both at once.
+// always submits both at once. Also seeds the Detailed view's fixed Status
+// column (see addDetailColumn) — every workflow has one from the start.
 export async function createWorkflow(
   projectId: string,
   name: string,
@@ -89,6 +92,10 @@ export async function createWorkflow(
   if (error) throw new Error(error.message);
 
   const createdSteps = await appendSteps(workflow.id, steps);
+  const { error: statusColumnError } = await getSupabase()
+    .from(DETAIL_COLUMNS_TABLE)
+    .insert({ workflow_id: workflow.id, position: 0, label: "Status", kind: "status" });
+  if (statusColumnError) throw new Error(statusColumnError.message);
   return { workflow: workflow as LabWorkflow, steps: createdSteps };
 }
 
@@ -378,4 +385,124 @@ export async function upsertCustomValues(
     .select();
   if (error) throw new Error(error.message);
   return (data ?? []) as LabWorkflowCustomValue[];
+}
+
+export type DetailColumnKind = "text" | "date" | "status";
+
+export type LabWorkflowDetailColumn = {
+  id: string;
+  workflow_id: string;
+  created_at: string;
+  position: number;
+  label: string;
+  kind: DetailColumnKind;
+};
+
+export type LabWorkflowDetailValue = {
+  id: string;
+  column_id: string;
+  sample_id: string;
+  updated_at: string;
+  value: string | null;
+};
+
+export async function listDetailColumns(workflowId: string): Promise<LabWorkflowDetailColumn[]> {
+  const { data, error } = await getSupabase()
+    .from(DETAIL_COLUMNS_TABLE)
+    .select("*")
+    .eq("workflow_id", workflowId)
+    .order("position", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LabWorkflowDetailColumn[];
+}
+
+// Appended after whatever's already there — the fixed Status column is
+// seeded separately (see createWorkflow) at position 0 and always sorts
+// first, so a user-added column never needs to know about it.
+export async function addDetailColumn(
+  workflowId: string,
+  label: string,
+  kind: Exclude<DetailColumnKind, "status">
+): Promise<LabWorkflowDetailColumn> {
+  const existing = await listDetailColumns(workflowId);
+  const { data, error } = await getSupabase()
+    .from(DETAIL_COLUMNS_TABLE)
+    .insert({ workflow_id: workflowId, label: label.trim(), kind, position: existing.length })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as LabWorkflowDetailColumn;
+}
+
+async function getDetailColumn(id: string): Promise<LabWorkflowDetailColumn | null> {
+  const { data, error } = await getSupabase()
+    .from(DETAIL_COLUMNS_TABLE)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as LabWorkflowDetailColumn | null;
+}
+
+// The Status column is fixed — seeded once per workflow and never user-
+// renamed or removed, so both of these refuse to touch it.
+export async function renameDetailColumn(
+  id: string,
+  label: string
+): Promise<LabWorkflowDetailColumn> {
+  const column = await getDetailColumn(id);
+  if (column?.kind === "status") throw new Error("The Status column can't be renamed");
+  const { data, error } = await getSupabase()
+    .from(DETAIL_COLUMNS_TABLE)
+    .update({ label: label.trim() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as LabWorkflowDetailColumn;
+}
+
+// Cascades to that column's values across every sample.
+export async function deleteDetailColumn(id: string): Promise<void> {
+  const column = await getDetailColumn(id);
+  if (column?.kind === "status") throw new Error("The Status column can't be deleted");
+  const { error } = await getSupabase().from(DETAIL_COLUMNS_TABLE).delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// Every detail value across every detail column of this workflow — same
+// "fetch the whole workflow's worth at once" approach as
+// listCustomValuesForWorkflow.
+export async function listDetailValuesForWorkflow(
+  workflowId: string
+): Promise<LabWorkflowDetailValue[]> {
+  const columns = await listDetailColumns(workflowId);
+  if (columns.length === 0) return [];
+  const { data, error } = await getSupabase()
+    .from(DETAIL_VALUES_TABLE)
+    .select("*")
+    .in(
+      "column_id",
+      columns.map((c) => c.id)
+    );
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LabWorkflowDetailValue[];
+}
+
+export type DetailValueUpsertInput = { column_id: string; sample_id: string; value: string | null };
+
+export async function upsertDetailValues(
+  rows: DetailValueUpsertInput[]
+): Promise<LabWorkflowDetailValue[]> {
+  if (rows.length === 0) return [];
+  const now = new Date().toISOString();
+  const { data, error } = await getSupabase()
+    .from(DETAIL_VALUES_TABLE)
+    .upsert(
+      rows.map((row) => ({ ...row, updated_at: now })),
+      { onConflict: "column_id,sample_id" }
+    )
+    .select();
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LabWorkflowDetailValue[];
 }

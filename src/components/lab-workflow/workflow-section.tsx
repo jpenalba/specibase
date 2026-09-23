@@ -6,6 +6,8 @@ import {
   LabWorkflow,
   LabWorkflowCustomColumn,
   LabWorkflowCustomValue,
+  LabWorkflowDetailColumn,
+  LabWorkflowDetailValue,
   LabWorkflowEntry,
   LabWorkflowStep,
 } from "@/lib/lab-workflows-store";
@@ -16,8 +18,9 @@ import { WorkflowDialog } from "./workflow-dialog";
 import { ManageSamplesDialog } from "./manage-samples-dialog";
 import { StepManagerDialog } from "./step-manager-dialog";
 import { ManageColumnsDialog } from "./manage-columns-dialog";
+import { ManageDetailColumnsDialog } from "./manage-detail-columns-dialog";
 import { SimpleGrid } from "./simple-grid";
-import { DetailedView, DetailedEntryPatch } from "./detailed-view";
+import { DetailTable } from "./detail-table";
 import { Button } from "@/components/ui/button";
 import { cn, compareIdentifiers } from "@/lib/utils";
 
@@ -74,6 +77,8 @@ export function WorkflowSection({
   const [entries, setEntries] = useState<LabWorkflowEntry[]>([]);
   const [customColumns, setCustomColumns] = useState<LabWorkflowCustomColumn[]>([]);
   const [customValues, setCustomValues] = useState<LabWorkflowCustomValue[]>([]);
+  const [detailColumns, setDetailColumns] = useState<LabWorkflowDetailColumn[]>([]);
+  const [detailValues, setDetailValues] = useState<LabWorkflowDetailValue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("simple");
@@ -90,6 +95,7 @@ export function WorkflowSection({
   const [editMode, setEditMode] = useState(false);
   const [dirtyEntryKeys, setDirtyEntryKeys] = useState<Set<string>>(new Set());
   const [dirtyValueKeys, setDirtyValueKeys] = useState<Set<string>>(new Set());
+  const [dirtyDetailValueKeys, setDirtyDetailValueKeys] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
@@ -107,6 +113,8 @@ export function WorkflowSection({
         setEntries(detail.entries ?? []);
         setCustomColumns(detail.customColumns ?? []);
         setCustomValues(detail.customValues ?? []);
+        setDetailColumns(detail.detailColumns ?? []);
+        setDetailValues(detail.detailValues ?? []);
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
@@ -162,15 +170,6 @@ export function WorkflowSection({
     });
   }
 
-  function handleDetailedSave(stepId: string, sampleId: string, patch: DetailedEntryPatch) {
-    setEntries((prev) => mergeEntry(prev, stepId, sampleId, patch));
-    fetch(`/api/lab-workflows/${workflowId}/entries`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entries: [{ step_id: stepId, sample_id: sampleId, ...patch }] }),
-    }).catch(() => setError("Couldn't save that change — try again."));
-  }
-
   // Also held locally until Save, for the same reason as handleGridCommit —
   // and still batched into one dirty-key update per call so a fill-handle
   // drag across many rows doesn't thrash state one row at a time.
@@ -206,6 +205,40 @@ export function WorkflowSection({
     });
   }
 
+  // Detailed view's columns — same "held locally, dirty-tracked" approach
+  // as the Simple grid's custom values above.
+  function handleSaveDetailValues(columnId: string, edits: { sampleId: string; value: string }[]) {
+    if (edits.length === 0) return;
+    setDetailValues((prev) => {
+      let next = prev;
+      for (const { sampleId, value } of edits) {
+        const index = next.findIndex((v) => v.column_id === columnId && v.sample_id === sampleId);
+        if (index === -1) {
+          next = [
+            ...next,
+            {
+              id: `pending-${columnId}-${sampleId}`,
+              column_id: columnId,
+              sample_id: sampleId,
+              updated_at: new Date().toISOString(),
+              value,
+            },
+          ];
+        } else {
+          const copy = next.slice();
+          copy[index] = { ...copy[index], value };
+          next = copy;
+        }
+      }
+      return next;
+    });
+    setDirtyDetailValueKeys((prev) => {
+      const next = new Set(prev);
+      for (const { sampleId } of edits) next.add(`${columnId}:${sampleId}`);
+      return next;
+    });
+  }
+
   async function handleSaveEdits() {
     setSaving(true);
     setError(null);
@@ -215,6 +248,9 @@ export function WorkflowSection({
         .map((e) => ({ step_id: e.step_id, sample_id: e.sample_id, status: e.status }));
       const valuePatches = customValues
         .filter((v) => dirtyValueKeys.has(`${v.column_id}:${v.sample_id}`))
+        .map((v) => ({ column_id: v.column_id, sample_id: v.sample_id, value: v.value }));
+      const detailValuePatches = detailValues
+        .filter((v) => dirtyDetailValueKeys.has(`${v.column_id}:${v.sample_id}`))
         .map((v) => ({ column_id: v.column_id, sample_id: v.sample_id, value: v.value }));
 
       const requests: Promise<Response>[] = [];
@@ -236,6 +272,15 @@ export function WorkflowSection({
           })
         );
       }
+      if (detailValuePatches.length > 0) {
+        requests.push(
+          fetch(`/api/lab-workflows/${workflowId}/detail-values`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ values: detailValuePatches }),
+          })
+        );
+      }
 
       const results = await Promise.all(requests);
       if (results.some((r) => !r.ok)) {
@@ -244,6 +289,7 @@ export function WorkflowSection({
       }
       setDirtyEntryKeys(new Set());
       setDirtyValueKeys(new Set());
+      setDirtyDetailValueKeys(new Set());
       setEditMode(false);
       load();
     } catch {
@@ -256,6 +302,7 @@ export function WorkflowSection({
   function handleCancelEdits() {
     setDirtyEntryKeys(new Set());
     setDirtyValueKeys(new Set());
+    setDirtyDetailValueKeys(new Set());
     setEditMode(false);
     load();
   }
@@ -321,12 +368,21 @@ export function WorkflowSection({
                 onSaved={load}
                 trigger={<Button variant="outline" size="sm">Edit steps</Button>}
               />
-              <ManageColumnsDialog
-                workflowId={workflowId}
-                columns={customColumns}
-                onSaved={load}
-                trigger={<Button variant="outline" size="sm">Manage columns</Button>}
-              />
+              {view === "simple" ? (
+                <ManageColumnsDialog
+                  workflowId={workflowId}
+                  columns={customColumns}
+                  onSaved={load}
+                  trigger={<Button variant="outline" size="sm">Manage columns</Button>}
+                />
+              ) : (
+                <ManageDetailColumnsDialog
+                  workflowId={workflowId}
+                  columns={detailColumns}
+                  onSaved={load}
+                  trigger={<Button variant="outline" size="sm">Manage detail columns</Button>}
+                />
+              )}
             </>
           )}
           {editMode ? (
@@ -374,11 +430,12 @@ export function WorkflowSection({
           onSaveCustomValues={handleSaveCustomValues}
         />
       ) : (
-        <DetailedView
-          steps={steps}
+        <DetailTable
           samples={pageSamples}
-          entries={entries}
-          onSaveEntry={handleDetailedSave}
+          columns={detailColumns}
+          values={detailValues}
+          editable={editMode}
+          onSaveDetailValues={handleSaveDetailValues}
         />
       )}
 
