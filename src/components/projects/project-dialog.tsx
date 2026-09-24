@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { Project, ProjectStatus } from "@/lib/projects-store";
 import { parseDDMMYYYY, DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
-import { FOCAL_GROUP_CATEGORIES, categorizeFocalGroup, FocalGroupCategory } from "@/lib/focal-group";
+import { categorizeFocalGroup, FocalGroupCategory } from "@/lib/focal-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { FocalGroupIcon } from "./focal-group-icon";
+import { FocalGroupIcon, PICKABLE_LOGO_CATEGORIES } from "./focal-group-icon";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -273,7 +273,7 @@ export function ProjectDialog({
               >
                 <FocalGroupIcon logo={autoCategory} focalGroup={null} size={32} />
               </button>
-              {FOCAL_GROUP_CATEGORIES.map((category) => (
+              {PICKABLE_LOGO_CATEGORIES.map((category) => (
                 <button
                   key={category}
                   type="button"
