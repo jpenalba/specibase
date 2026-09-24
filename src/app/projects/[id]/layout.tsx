@@ -14,14 +14,15 @@ const TABS = [
   { slug: "info", label: "Info" },
   { slug: "samples", label: "Samples" },
   { slug: "lab-workflow", label: "Lab workflow" },
+  { slug: "lab-notes", label: "Lab notes" },
   { slug: "bioinformatics", label: "Bioinformatic workflow" },
   { slug: "bio-notes", label: "Bioinformatic notes" },
 ];
 
 // The project's home shell: shared across every tab (Info, Samples, Lab
-// workflow, Bioinformatic workflow, Bioinformatic notes), each its own
-// route under here — so a tab is bookmarkable/shareable and the project's
-// identity (icon, name, status, description) only needs fetching and
+// workflow, Lab notes, Bioinformatic workflow, Bioinformatic notes), each
+// its own route under here — so a tab is bookmarkable/shareable and the
+// project's identity (icon, name, status, description) only needs fetching and
 // rendering once.
 export default function ProjectLayout({ children }: { children: React.ReactNode }) {
   const { id: projectId } = useParams<{ id: string }>();

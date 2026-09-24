@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { BioNotesBlock } from "@/lib/project-bio-notes-store";
+import { LabNotesBlock } from "@/lib/project-lab-notes-store";
 import { Project } from "@/lib/projects-store";
 import { formatTimestampDisplay } from "@/lib/date-format";
 import { renderMarkdownToPdf } from "@/lib/markdown-pdf";
@@ -24,12 +24,12 @@ function BlockCard({
   onMove,
   onSaved,
 }: {
-  block: BioNotesBlock;
+  block: LabNotesBlock;
   projectId: string;
   isFirst: boolean;
   isLast: boolean;
   onMove: (direction: -1 | 1) => void;
-  onSaved: (block: BioNotesBlock) => void;
+  onSaved: (block: LabNotesBlock) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(block.title);
@@ -53,7 +53,7 @@ function BlockCard({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/projects/${projectId}/bio-notes-blocks/${block.id}`, {
+      const res = await fetch(`/api/projects/${projectId}/lab-notes-blocks/${block.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, content: contentDraft }),
@@ -147,7 +147,7 @@ function AddBlockForm({
   onCancel,
 }: {
   projectId: string;
-  onAdded: (block: BioNotesBlock) => void;
+  onAdded: (block: LabNotesBlock) => void;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
@@ -164,7 +164,7 @@ function AddBlockForm({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/projects/${projectId}/bio-notes-blocks`, {
+      const res = await fetch(`/api/projects/${projectId}/lab-notes-blocks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: trimmed, content }),
@@ -210,12 +210,14 @@ function AddBlockForm({
   );
 }
 
-// A project's "Bioinformatic notes" tab: a notebook of titled, dated
-// markdown blocks — one per entry, rather than one running document like
-// the Info tab's Background/Notes (MarkdownField). New blocks always go
-// at the bottom; existing ones can be edited in place or reordered.
-export function BioNotesSection({ projectId }: { projectId: string }) {
-  const [blocks, setBlocks] = useState<BioNotesBlock[]>([]);
+// A project's "Lab notes" tab: a notebook of titled, dated markdown
+// blocks — one per entry, rather than one running document like the Info
+// tab's Background/Notes (MarkdownField). New blocks always go at the
+// bottom; existing ones can be edited in place or reordered. An "Images"
+// gallery (gel images, traces) sits below, added via its own button since
+// an image carries its own metadata rather than living inline in a block.
+export function LabNotesSection({ projectId }: { projectId: string }) {
+  const [blocks, setBlocks] = useState<LabNotesBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -223,7 +225,7 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/projects/${projectId}/bio-notes-blocks`)
+    fetch(`/api/projects/${projectId}/lab-notes-blocks`)
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
@@ -245,7 +247,7 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
-  function replaceBlock(updated: BioNotesBlock) {
+  function replaceBlock(updated: LabNotesBlock) {
     setBlocks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
   }
 
@@ -260,7 +262,7 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
     [next[index], next[target]] = [next[target], next[index]];
     setBlocks(next);
     try {
-      const res = await fetch(`/api/projects/${projectId}/bio-notes-blocks`, {
+      const res = await fetch(`/api/projects/${projectId}/lab-notes-blocks`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderedBlockIds: next.map((b) => b.id) }),
@@ -281,7 +283,7 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
       const project = (projectsData.projects ?? []).find((p: Project) => p.id === projectId) as
         | Project
         | undefined;
-      const title = project?.name ? `${project.name} — Bioinformatic notes` : "Bioinformatic notes";
+      const title = project?.name ? `${project.name} — Lab notes` : "Lab notes";
 
       const { jsPDF } = await import("jspdf");
       const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
@@ -331,7 +333,7 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
       }
 
       const slug = (project?.name ?? "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-      doc.save(`specibase-${slug}-bio-notes.pdf`);
+      doc.save(`specibase-${slug}-lab-notes.pdf`);
     } finally {
       setExporting(false);
     }
@@ -386,7 +388,7 @@ export function BioNotesSection({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      <NoteImagesSection projectId={projectId} kind="bio" />
+      <NoteImagesSection projectId={projectId} kind="lab" />
     </div>
   );
 }

@@ -248,6 +248,51 @@ create table if not exists project_bio_notes_blocks (
 
 create index if not exists project_bio_notes_blocks_project_id_idx on project_bio_notes_blocks (project_id);
 
+-- "Lab notes" tab — same shape as project_bio_notes_blocks above. See
+-- supabase/migrations/0027_lab_notes_and_note_images.sql.
+create table if not exists project_lab_notes_blocks (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  position integer not null,
+  title text not null,
+  content text not null default ''
+);
+
+create index if not exists project_lab_notes_blocks_project_id_idx on project_lab_notes_blocks (project_id);
+
+-- Image attachments (gel images, traces, etc.) for the Lab/Bioinformatic
+-- notes tabs — added via their own button rather than embedded in a
+-- markdown block, since they carry their own metadata. Uses the existing
+-- "project-images" storage bucket (see 0008_project_background.sql).
+create table if not exists project_lab_note_images (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  title text not null,
+  notes text,
+  sample_ids uuid[] not null default '{}',
+  image_url text not null
+);
+
+create index if not exists project_lab_note_images_project_id_idx on project_lab_note_images (project_id);
+
+create table if not exists project_bio_note_images (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  title text not null,
+  notes text,
+  sample_ids uuid[] not null default '{}',
+  image_url text not null
+);
+
+create index if not exists project_bio_note_images_project_id_idx on project_bio_note_images (project_id);
+
 -- Per-value color/shape overrides when a project colors its Samples-tab
 -- map by a field (marker_style_field) instead of one flat style — see
 -- supabase/migrations/0016_project_marker_styles.sql.
@@ -521,6 +566,9 @@ alter table bio_workflow_detail_columns enable row level security;
 alter table bio_workflow_detail_rows enable row level security;
 alter table bio_workflow_detail_values enable row level security;
 alter table project_bio_notes_blocks enable row level security;
+alter table project_lab_notes_blocks enable row level security;
+alter table project_lab_note_images enable row level security;
+alter table project_bio_note_images enable row level security;
 alter table project_marker_styles enable row level security;
 alter table protocols enable row level security;
 alter table activity_log enable row level security;
