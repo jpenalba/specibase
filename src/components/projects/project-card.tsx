@@ -35,7 +35,9 @@ export function ProjectCard({
         <ProjectStatusBadge status={project.status} />
       </div>
       <CardHeader className="flex-row items-start gap-3 space-y-0 pt-10">
-        <FocalGroupIcon focalGroup={project.focal_group} logo={project.logo} />
+        {/* 1.8x the component's own default (40px) — the project list is
+            the one place this icon is the card's primary visual anchor. */}
+        <FocalGroupIcon focalGroup={project.focal_group} logo={project.logo} size={72} />
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-semibold">{project.name}</h3>
           {project.description && (
