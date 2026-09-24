@@ -1,9 +1,8 @@
 import { categorizeFocalGroup, FOCAL_GROUP_CATEGORIES, FocalGroupCategory } from "@/lib/focal-group";
 
-// Maps a category to its icon file under public/logos. Categories without
-// a matching icon yet (insect, other) fall back to the generic tube
-// icon — more of these will be added as icons for them come in, at which
-// point they just get their own entry here.
+// Maps a category to its icon file under public/logos. Every category has
+// its own entry here now except "other" (the generic catch-all), which
+// falls back to the tube icon below.
 const CATEGORY_IMAGE: Partial<Record<FocalGroupCategory, string>> = {
   bird: "/logos/bird.png",
   mammal: "/logos/mouse.png",
@@ -28,13 +27,11 @@ const CATEGORY_IMAGE: Partial<Record<FocalGroupCategory, string>> = {
 };
 const DEFAULT_IMAGE = "/logos/tube.png";
 
-// The logo picker (project-dialog.tsx) shows one button per entry here
-// rather than per FOCAL_GROUP_CATEGORIES entry — every category without
-// its own icon yet falls back to the same generic tube image, and "other"
-// is the one that gets to keep a button for it; any other such category
-// (currently just "insect") would just be an identical-looking duplicate.
-// Still fully valid categorization targets via categorizeFocalGroup, just
-// not separately pickable until they get their own icon.
+// The logo picker (project-dialog.tsx) shows one button per entry here.
+// With every real category now having its own icon, this just filters out
+// any future category added without one yet (so it doesn't show up as a
+// duplicate-looking tube button until it gets its own art) — "other"
+// always keeps its button as the one legitimate user of the tube fallback.
 export const PICKABLE_LOGO_CATEGORIES: FocalGroupCategory[] = FOCAL_GROUP_CATEGORIES.filter(
   (category) => category === "other" || category in CATEGORY_IMAGE
 );

@@ -5,7 +5,6 @@ export type FocalGroupCategory =
   | "reptile"
   | "snake"
   | "amphibian"
-  | "insect"
   | "beetle"
   | "butterfly"
   | "moth"
@@ -22,17 +21,12 @@ export type FocalGroupCategory =
   | "bacteria"
   | "other";
 
-// All pickable categories, in the order the logo picker shows them —
-// each specific category follows the broader group it was split out of
-// (snake out of reptile; beetle/butterfly/moth/ant/bee/wasp out of
-// insect), "other" last since it's the generic catch-all. spider, crab,
-// shrimp, snail, coral, fungus, and bacteria each get their own standalone
-// category rather than being split out of anything — none of them are
-// insects (arachnid, crustacean x2, mollusk, cnidarian, fungus, and not
-// even an animal). "insect" itself is deliberately left without its own
-// icon (see PICKABLE_LOGO_CATEGORIES) — there are enough specific insect
-// icons now (beetle/butterfly/moth/ant/bee/wasp) that the generic bucket
-// doesn't need one.
+// All pickable categories, in the order the logo picker shows them, each
+// one with its own icon — "other" last since it's the sole exception: the
+// generic catch-all, sharing the tube icon with nothing else now that
+// every real category has its own. There's no generic "insect" bucket —
+// beetle/butterfly/moth/ant/bee/wasp cover the specific ones with icons,
+// and anything else insect-y just falls through to "other".
 export const FOCAL_GROUP_CATEGORIES: FocalGroupCategory[] = [
   "bird",
   "mammal",
@@ -40,7 +34,6 @@ export const FOCAL_GROUP_CATEGORIES: FocalGroupCategory[] = [
   "reptile",
   "snake",
   "amphibian",
-  "insect",
   "beetle",
   "butterfly",
   "moth",
@@ -59,10 +52,8 @@ export const FOCAL_GROUP_CATEGORIES: FocalGroupCategory[] = [
 ];
 
 // Keyword -> category, checked as a substring against the lowercased
-// "Focal species/group" text. First match wins; a specific category
-// (snake, beetle, butterfly, moth, ant, bee, wasp) is listed before the
-// broader one it was split out of (reptile, insect respectively) so its
-// own keyword isn't shadowed.
+// "Focal species/group" text. First match wins; "snake" is listed before
+// "reptile" so a snake keyword isn't shadowed by the broader reptile one.
 const KEYWORDS: [FocalGroupCategory, string[]][] = [
   ["bird", ["bird", "aves", "songbird", "passerine", "warbler", "finch", "wren", "waterfowl", "raptor", "owl", "fairywren"]],
   ["mammal", ["mammal", "rodent", "primate", "bat", "carnivore", "ungulate", "marsupial", "rat", "mouse", "vole", "bear", "cat", "dog", "whale", "dolphin"]],
@@ -76,7 +67,6 @@ const KEYWORDS: [FocalGroupCategory, string[]][] = [
   ["ant", ["ant", "formicidae"]],
   ["bee", ["bee", "apidae", "honeybee", "bumblebee"]],
   ["wasp", ["wasp", "hornet", "yellowjacket"]],
-  ["insect", ["insect", "drosophila", "fly", "cricket", "grasshopper", "dragonfly"]],
   ["spider", ["spider", "arachnid", "tarantula"]],
   ["crab", ["crab", "crustacean"]],
   ["shrimp", ["shrimp", "prawn"]],
@@ -92,10 +82,16 @@ const KEYWORDS: [FocalGroupCategory, string[]][] = [
 // match "tarantula", "cat" would match "indicate", "ray" would match
 // "array". Requiring a word boundary around anything 4 letters or
 // shorter avoids that, while longer keywords keep plain substring
-// matching so a compound name without a space (e.g. "dragonfly") still
-// matches via its own explicit keyword.
+// matching so a compound scientific name without a space (e.g. a family
+// name like "viperidae") still matches via its base keyword ("viper").
+//
+// A few longer keywords have the same false-hit problem despite their
+// length — "grass" would otherwise match inside "grasshopper" — and need
+// a boundary too even though they're over 4 letters.
+const BOUNDARY_REQUIRED_KEYWORDS = new Set(["grass"]);
+
 function matchesKeyword(text: string, keyword: string): boolean {
-  if (keyword.length <= 4) {
+  if (keyword.length <= 4 || BOUNDARY_REQUIRED_KEYWORDS.has(keyword)) {
     return new RegExp(`\\b${keyword}\\b`).test(text);
   }
   return text.includes(keyword);
