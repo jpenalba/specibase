@@ -127,13 +127,15 @@ export default function ProtocolBuilderPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl p-6 text-sm text-muted-foreground sm:p-10">Loading...</div>
+      <div className="mx-auto w-full max-w-[100rem] p-6 text-sm text-muted-foreground sm:p-10">
+        Loading...
+      </div>
     );
   }
 
   if (error || !protocol) {
     return (
-      <div className="mx-auto max-w-4xl p-6 sm:p-10">
+      <div className="mx-auto w-full max-w-[100rem] p-6 sm:p-10">
         <Link
           href="/protocols"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
@@ -148,7 +150,7 @@ export default function ProtocolBuilderPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6 sm:p-10">
+    <div className="mx-auto flex w-full max-w-[100rem] flex-col gap-6 p-6 sm:p-10">
       <Link
         href="/protocols"
         className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:underline"
