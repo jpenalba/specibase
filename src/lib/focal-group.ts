@@ -14,15 +14,20 @@ export type FocalGroupCategory =
   | "wasp"
   | "spider"
   | "crab"
+  | "shrimp"
+  | "snail"
+  | "coral"
+  | "fungus"
   | "plant"
   | "other";
 
 // All pickable categories, in the order the logo picker shows them —
 // each specific category follows the broader group it was split out of
 // (snake out of reptile; beetle/butterfly/moth/ant/bee/wasp out of
-// insect), "other" last since it's the generic catch-all. spider and crab
-// aren't insects (arachnid, crustacean) so they aren't split out of
-// anything — they just sit alongside the other arthropods.
+// insect), "other" last since it's the generic catch-all. spider, crab,
+// shrimp, snail, coral, and fungus each get their own standalone category
+// rather than being split out of anything — none of them are insects
+// (arachnid, crustacean x2, mollusk, cnidarian, fungus).
 export const FOCAL_GROUP_CATEGORIES: FocalGroupCategory[] = [
   "bird",
   "mammal",
@@ -39,6 +44,10 @@ export const FOCAL_GROUP_CATEGORIES: FocalGroupCategory[] = [
   "wasp",
   "spider",
   "crab",
+  "shrimp",
+  "snail",
+  "coral",
+  "fungus",
   "plant",
   "other",
 ];
@@ -64,6 +73,10 @@ const KEYWORDS: [FocalGroupCategory, string[]][] = [
   ["insect", ["insect", "drosophila", "fly", "cricket", "grasshopper", "dragonfly"]],
   ["spider", ["spider", "arachnid", "tarantula"]],
   ["crab", ["crab", "crustacean"]],
+  ["shrimp", ["shrimp", "prawn"]],
+  ["snail", ["snail", "gastropod", "slug"]],
+  ["coral", ["coral", "anemone", "cnidarian"]],
+  ["fungus", ["fungus", "fungi", "mushroom", "mycelium", "lichen"]],
   ["plant", ["plant", "flora", "tree", "orchid", "flower", "angiosperm", "grass", "fern", "moss", "conifer"]],
 ];
 
