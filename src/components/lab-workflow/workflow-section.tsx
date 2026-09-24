@@ -23,6 +23,7 @@ import { ManageSamplesDialog } from "./manage-samples-dialog";
 import { StepManagerDialog } from "./step-manager-dialog";
 import { ManageColumnsDialog } from "./manage-columns-dialog";
 import { ManageDetailColumnsDialog } from "./manage-detail-columns-dialog";
+import { DetailImportDialog } from "./detail-import-dialog";
 import { SimpleGrid } from "./simple-grid";
 import { DetailTable } from "./detail-table";
 import { Button } from "@/components/ui/button";
@@ -442,14 +443,24 @@ export function WorkflowSection({
                   trigger={<Button variant="outline" size="sm">Manage columns</Button>}
                 />
               ) : (
-                <ManageDetailColumnsDialog
-                  workflowId={workflowId}
-                  columns={detailColumns}
-                  onSaved={load}
-                  apiBase={apiBase}
-                  presets={detailColumnPresets}
-                  trigger={<Button variant="outline" size="sm">Manage detail columns</Button>}
-                />
+                <>
+                  <ManageDetailColumnsDialog
+                    workflowId={workflowId}
+                    columns={detailColumns}
+                    onSaved={load}
+                    apiBase={apiBase}
+                    presets={detailColumnPresets}
+                    trigger={<Button variant="outline" size="sm">Manage detail columns</Button>}
+                  />
+                  <DetailImportDialog
+                    workflowId={workflowId}
+                    samples={enrolledSamples}
+                    rows={detailRows}
+                    onImported={load}
+                    apiBase={apiBase}
+                    trigger={<Button variant="outline" size="sm">Import CSV</Button>}
+                  />
+                </>
               )}
             </>
           )}
