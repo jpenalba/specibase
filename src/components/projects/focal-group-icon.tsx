@@ -1,14 +1,19 @@
 import { categorizeFocalGroup, FocalGroupCategory } from "@/lib/focal-group";
 
 // Maps a category to its icon file under public/logos. Categories without
-// a matching icon yet (fish, insect, plant, other) fall back to the
-// generic tube icon — more of these will be added as icons for them come
-// in, at which point they just get their own entry here.
+// a matching icon yet (insect, plant, other) fall back to the generic tube
+// icon — more of these will be added as icons for them come in, at which
+// point they just get their own entry here.
 const CATEGORY_IMAGE: Partial<Record<FocalGroupCategory, string>> = {
   bird: "/logos/bird.png",
   mammal: "/logos/mouse.png",
+  fish: "/logos/fish.png",
   reptile: "/logos/lizard.png",
+  snake: "/logos/snake.png",
   amphibian: "/logos/frog.png",
+  beetle: "/logos/beetle.png",
+  butterfly: "/logos/butterfly.png",
+  moth: "/logos/moth.png",
 };
 const DEFAULT_IMAGE = "/logos/tube.png";
 
