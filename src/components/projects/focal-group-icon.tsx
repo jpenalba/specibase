@@ -24,6 +24,7 @@ const CATEGORY_IMAGE: Partial<Record<FocalGroupCategory, string>> = {
   coral: "/logos/coral.png",
   fungus: "/logos/fungus.png",
   plant: "/logos/plant.png",
+  bacteria: "/logos/bacteria.png",
 };
 const DEFAULT_IMAGE = "/logos/tube.png";
 

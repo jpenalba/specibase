@@ -19,15 +19,20 @@ export type FocalGroupCategory =
   | "coral"
   | "fungus"
   | "plant"
+  | "bacteria"
   | "other";
 
 // All pickable categories, in the order the logo picker shows them —
 // each specific category follows the broader group it was split out of
 // (snake out of reptile; beetle/butterfly/moth/ant/bee/wasp out of
 // insect), "other" last since it's the generic catch-all. spider, crab,
-// shrimp, snail, coral, and fungus each get their own standalone category
-// rather than being split out of anything — none of them are insects
-// (arachnid, crustacean x2, mollusk, cnidarian, fungus).
+// shrimp, snail, coral, fungus, and bacteria each get their own standalone
+// category rather than being split out of anything — none of them are
+// insects (arachnid, crustacean x2, mollusk, cnidarian, fungus, and not
+// even an animal). "insect" itself is deliberately left without its own
+// icon (see PICKABLE_LOGO_CATEGORIES) — there are enough specific insect
+// icons now (beetle/butterfly/moth/ant/bee/wasp) that the generic bucket
+// doesn't need one.
 export const FOCAL_GROUP_CATEGORIES: FocalGroupCategory[] = [
   "bird",
   "mammal",
@@ -49,6 +54,7 @@ export const FOCAL_GROUP_CATEGORIES: FocalGroupCategory[] = [
   "coral",
   "fungus",
   "plant",
+  "bacteria",
   "other",
 ];
 
@@ -78,6 +84,7 @@ const KEYWORDS: [FocalGroupCategory, string[]][] = [
   ["coral", ["coral", "anemone", "cnidarian"]],
   ["fungus", ["fungus", "fungi", "mushroom", "mycelium", "lichen"]],
   ["plant", ["plant", "flora", "tree", "orchid", "flower", "angiosperm", "grass", "fern", "moss", "conifer"]],
+  ["bacteria", ["bacteria", "bacterium", "microbe", "prokaryote", "microbiome"]],
 ];
 
 // Short keywords ("ant", "bee", "cat", "ray"...) are prone to false
