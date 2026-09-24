@@ -9,6 +9,7 @@ import { SampleRecord } from "@/lib/samples-store";
 import { SampleProjectLink } from "@/lib/projects-store";
 import { MarkerStyle } from "@/lib/project-marker-styles-store";
 import { BioNotesBlock } from "@/lib/project-bio-notes-store";
+import { LabNotesBlock, NoteImage } from "@/lib/project-lab-notes-store";
 import { LabWorkflow, LabWorkflowDetailColumn, LabWorkflowDetailRow, LabWorkflowDetailValue } from "@/lib/lab-workflows-store";
 import { BioWorkflow } from "@/lib/bio-workflows-store";
 import { buildProjectMapLayer } from "@/lib/marker-style";
@@ -137,6 +138,38 @@ function drawLegend(
   return y;
 }
 
+// Fetches a note image's already-uploaded remote URL and converts it to a
+// data URL jsPDF's addImage can embed, plus its natural size for scaling —
+// unlike the Samples map (a live canvas capture), these come from Supabase
+// storage, so they need fetch()+FileReader instead of an imperative ref.
+async function loadImageAsDataUrl(url: string): Promise<{ dataUrl: string; width: number; height: number } | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    const { width, height } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => reject(new Error("Couldn't load image"));
+      img.src = dataUrl;
+    });
+    return { dataUrl, width, height };
+  } catch {
+    return null;
+  }
+}
+
+function imageFormatFromDataUrl(dataUrl: string): string {
+  const type = /^data:image\/(\w+);/.exec(dataUrl)?.[1]?.toUpperCase() ?? "PNG";
+  return type === "JPG" ? "JPEG" : type;
+}
+
 // Compiles a project's tabs into one PDF, letting the user pick which
 // sections to include — and, for a Lab/Bioinformatic workflow's full
 // Detailed table, whether that section's pages are portrait or landscape.
@@ -147,6 +180,7 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
   const [bioWorkflows, setBioWorkflows] = useState<WorkflowChoice[]>([]);
   const [includeInfo, setIncludeInfo] = useState(true);
   const [includeSamples, setIncludeSamples] = useState(true);
+  const [includeLabNotes, setIncludeLabNotes] = useState(true);
   const [includeBioNotes, setIncludeBioNotes] = useState(true);
   const [compiling, setCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -483,23 +517,34 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
         }
       }
 
-      if (includeBioNotes) {
+      const sampleById = new Map(allSamples.map((s) => [s.id, s]));
+
+      const notesSections: { title: string; blocksEndpoint: string; imagesEndpoint: string; included: boolean }[] = [
+        { title: "Lab notes", blocksEndpoint: "lab-notes-blocks", imagesEndpoint: "lab-note-images", included: includeLabNotes },
+        { title: "Bioinformatic notes", blocksEndpoint: "bio-notes-blocks", imagesEndpoint: "bio-note-images", included: includeBioNotes },
+      ];
+
+      for (const section of notesSections) {
+        if (!section.included) continue;
         const { pageHeight, maxWidth } = startSection(doc, "portrait", margin);
         const mdOpts = { x: margin, maxWidth, pageHeight, marginBottom: margin };
         let y = margin + 10;
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
-        doc.text("Bioinformatic notes", margin, y);
+        doc.text(section.title, margin, y);
         doc.setFont("helvetica", "normal");
         y += 24;
 
-        const blocksData = await fetch(`/api/projects/${projectId}/bio-notes-blocks`).then((res) => res.json());
-        const blocks = (blocksData.blocks ?? []) as BioNotesBlock[];
+        const blocksData = await fetch(`/api/projects/${projectId}/${section.blocksEndpoint}`).then((res) =>
+          res.json()
+        );
+        const blocks = (blocksData.blocks ?? []) as (LabNotesBlock | BioNotesBlock)[];
         if (blocks.length === 0) {
           doc.setFontSize(10);
           doc.setTextColor(140);
           doc.text("No entries yet.", margin, y);
           doc.setTextColor(0);
+          y += 20;
         }
         for (const block of blocks) {
           if (y + 24 > pageHeight - margin) {
@@ -519,6 +564,78 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
           y += 16;
 
           y = renderMarkdownToPdf(doc, block.content || "*Empty block.*", y, mdOpts) + 20;
+        }
+
+        const imagesData = await fetch(`/api/projects/${projectId}/${section.imagesEndpoint}`).then((res) =>
+          res.json()
+        );
+        const images = (imagesData.images ?? []) as NoteImage[];
+        if (images.length > 0) {
+          if (y + 30 > pageHeight - margin) {
+            doc.addPage("a4", "portrait");
+            y = margin;
+          }
+          doc.setFontSize(14);
+          doc.setFont("helvetica", "bold");
+          doc.text("Images", margin, y);
+          doc.setFont("helvetica", "normal");
+          y += 20;
+
+          for (const image of images) {
+            const loaded = await loadImageAsDataUrl(image.image_url);
+            const identifiers = image.sample_ids
+              .map((id) => sampleById.get(id)?.primary_identifier)
+              .filter((v): v is string => Boolean(v));
+            // Cap by both width and available page height (not just width,
+            // as the map capture does) — a note image's own aspect ratio
+            // isn't controlled the way a rendered map is, so a tall photo
+            // could otherwise overflow a fresh page.
+            const maxImgWidth = Math.min(maxWidth, 260);
+            const maxImgHeight = pageHeight - margin * 2 - 50;
+            const scale = loaded ? Math.min(maxImgWidth / loaded.width, maxImgHeight / loaded.height, 1) : 0;
+            const imgWidth = loaded ? loaded.width * scale : 0;
+            const imgHeight = loaded ? loaded.height * scale : 0;
+
+            if (y + 30 + imgHeight > pageHeight - margin) {
+              doc.addPage("a4", "portrait");
+              y = margin;
+            }
+
+            doc.setFontSize(11);
+            doc.setFont("helvetica", "bold");
+            doc.text(image.title, margin, y);
+            doc.setFont("helvetica", "normal");
+            y += 14;
+
+            doc.setFontSize(9);
+            doc.setTextColor(140);
+            doc.text(formatTimestampDisplay(image.created_at), margin, y);
+            doc.setTextColor(0);
+            y += 14;
+
+            if (loaded) {
+              doc.addImage(loaded.dataUrl, imageFormatFromDataUrl(loaded.dataUrl), margin, y, imgWidth, imgHeight);
+              y += imgHeight + 8;
+            } else {
+              doc.setFontSize(9);
+              doc.setTextColor(140);
+              doc.text("(Image couldn't be embedded)", margin, y);
+              doc.setTextColor(0);
+              y += 14;
+            }
+
+            if (identifiers.length > 0) {
+              doc.setFontSize(9);
+              doc.setTextColor(90);
+              doc.text(`Samples: ${identifiers.join(", ")}`, margin, y);
+              doc.setTextColor(0);
+              y += 14;
+            }
+            if (image.notes) {
+              y = renderParagraph(doc, image.notes, margin, y, mdOpts) + 6;
+            }
+            y += 12;
+          }
         }
       }
 
@@ -579,6 +696,10 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
                   ))}
                 </div>
               )}
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={includeLabNotes} onCheckedChange={() => setIncludeLabNotes((v) => !v)} />
+                Lab notes
+              </label>
               {bioWorkflows.length > 0 && (
                 <div>
                   <p className="mb-1 text-xs font-medium text-muted-foreground">Bioinformatic workflow</p>
