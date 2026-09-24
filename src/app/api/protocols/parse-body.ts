@@ -17,6 +17,7 @@ export type ParsedProtocolFields = {
   source_type?: ProtocolSourceType;
   pdf_url?: string;
   pdf_filename?: string;
+  content?: string;
 };
 
 // Shared between POST (create) and PATCH (update) — pulls the protocol
@@ -54,5 +55,6 @@ export function parseProtocolFields(
     source_type: sourceType,
     pdf_url: stringField(body, "pdf_url"),
     pdf_filename: stringField(body, "pdf_filename"),
+    content: stringField(body, "content"),
   };
 }

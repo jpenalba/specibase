@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FileText, Hammer, Pencil, Trash2 } from "lucide-react";
 import { Protocol } from "@/lib/protocols-store";
 import { PROTOCOL_TYPE_LABELS } from "@/lib/protocol-types";
@@ -63,13 +64,8 @@ export function ProtocolRow({
             </a>
           </Button>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            title="Building protocols directly in Specibase is coming soon"
-          >
-            Open
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/protocols/${protocol.id}`}>Open</Link>
           </Button>
         )}
         <ProtocolDialog

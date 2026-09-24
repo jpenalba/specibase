@@ -62,7 +62,11 @@ export function MarkdownField({
     return (
       <div className="grid gap-3">
         {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-        <MarkdownEditor projectId={projectId} value={draft} onChange={setDraft} />
+        <MarkdownEditor
+          uploadUrl={`/api/projects/${projectId}/images`}
+          value={draft}
+          onChange={setDraft}
+        />
         <div className="flex gap-2">
           <Button onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : "Save"}

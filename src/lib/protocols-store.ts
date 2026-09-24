@@ -8,6 +8,7 @@ const BUCKET = "protocol-files";
 export type Protocol = {
   id: string;
   created_at: string;
+  updated_at: string;
   name: string;
   description: string | null;
   date_added: string;
@@ -15,6 +16,7 @@ export type Protocol = {
   source_type: ProtocolSourceType;
   pdf_url: string | null;
   pdf_filename: string | null;
+  content: string | null;
 };
 
 export type NewProtocolInput = {
@@ -27,7 +29,7 @@ export type NewProtocolInput = {
   pdf_filename?: string;
 };
 
-export type UpdateProtocolInput = Partial<NewProtocolInput>;
+export type UpdateProtocolInput = Partial<NewProtocolInput> & { content?: string };
 
 export async function listProtocols(): Promise<Protocol[]> {
   const { data, error } = await getSupabase()
@@ -36,6 +38,12 @@ export async function listProtocols(): Promise<Protocol[]> {
     .order("date_added", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as Protocol[];
+}
+
+export async function getProtocol(id: string): Promise<Protocol | null> {
+  const { data, error } = await getSupabase().from(TABLE).select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as Protocol | null;
 }
 
 export async function createProtocol(input: NewProtocolInput): Promise<Protocol> {
@@ -58,12 +66,15 @@ export async function createProtocol(input: NewProtocolInput): Promise<Protocol>
   return data as Protocol;
 }
 
-// Partial update — only fields present in `input` are changed.
+// Partial update — only fields present in `input` are changed. `updated_at`
+// is bumped on every call (mirrors lab/bio-workflows-store.ts's pattern —
+// there's no DB trigger for it), so it always reflects the most recent
+// edit, whether that's a content save or a metadata change from the dialog.
 export async function updateProtocol(
   id: string,
   input: UpdateProtocolInput
 ): Promise<Protocol> {
-  const patch: Record<string, unknown> = {};
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) patch.name = input.name.trim();
   if (input.description !== undefined) patch.description = input.description.trim() || null;
   // date_added is NOT NULL — callers (the API route) validate it's
@@ -73,6 +84,7 @@ export async function updateProtocol(
   if (input.source_type !== undefined) patch.source_type = input.source_type;
   if (input.pdf_url !== undefined) patch.pdf_url = input.pdf_url.trim() || null;
   if (input.pdf_filename !== undefined) patch.pdf_filename = input.pdf_filename.trim() || null;
+  if (input.content !== undefined) patch.content = input.content;
 
   const { data, error } = await getSupabase()
     .from(TABLE)
@@ -113,4 +125,20 @@ export async function uploadProtocolPdf(
 
   const { data } = getSupabase().storage.from(BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, filename: file.name };
+}
+
+// Images inserted into a built protocol's markdown content — same bucket
+// as uploaded PDFs, but under a per-protocol `images/` folder so the two
+// never collide (a PDF is `<uuid>.pdf` at the bucket root).
+export async function uploadProtocolImage(protocolId: string, file: File): Promise<string> {
+  const ext = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "bin";
+  const path = `${protocolId}/images/${randomUUID()}.${ext}`;
+
+  const { error } = await getSupabase()
+    .storage.from(BUCKET)
+    .upload(path, file, { contentType: file.type });
+  if (error) throw new Error(error.message);
+
+  const { data } = getSupabase().storage.from(BUCKET).getPublicUrl(path);
+  return data.publicUrl;
 }

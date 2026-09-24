@@ -443,6 +443,7 @@ create table if not exists bio_workflow_detail_values (
 create table if not exists protocols (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
 
   name text not null,
   description text,
@@ -451,7 +452,10 @@ create table if not exists protocols (
     check (protocol_type in ('field', 'lab', 'bioinformatic', 'other')),
   source_type text not null check (source_type in ('pdf', 'built')),
   pdf_url text,
-  pdf_filename text
+  pdf_filename text,
+  -- Markdown body for a protocol built directly in Specibase (source_type
+  -- = 'built'); see supabase/migrations/0026_protocol_content.sql.
+  content text
 );
 
 -- Lightweight activity feed — one row per meaningful change, shown on

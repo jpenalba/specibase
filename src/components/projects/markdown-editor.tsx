@@ -49,12 +49,16 @@ function ToolbarButton({
 export function MarkdownEditor({
   value,
   onChange,
-  projectId,
+  uploadUrl,
   rows = 14,
 }: {
   value: string;
   onChange: (value: string) => void;
-  projectId: string;
+  // Where the image toolbar button POSTs a selected file — e.g.
+  // `/api/projects/${projectId}/images` or `/api/protocols/${id}/images`.
+  // Kept generic rather than a projectId prop so this editor can be reused
+  // anywhere markdown content is edited, not just a project's Info tab.
+  uploadUrl: string;
   rows?: number;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -141,7 +145,7 @@ export function MarkdownEditor({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`/api/projects/${projectId}/images`, {
+      const res = await fetch(uploadUrl, {
         method: "POST",
         body: formData,
       });

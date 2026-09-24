@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Protocol } from "@/lib/protocols-store";
 import {
   PROTOCOL_TYPES,
@@ -73,6 +74,7 @@ export function ProtocolDialog({
   trigger: React.ReactNode;
 }) {
   const isEdit = Boolean(protocol);
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<FormState>(() =>
     protocol ? formFromProtocol(protocol) : emptyForm()
@@ -164,7 +166,14 @@ export function ProtocolDialog({
         return;
       }
       setOpen(false);
-      onSaved();
+      if (!isEdit && values.sourceType === "built") {
+        // Straight into the builder page the user just asked for, rather
+        // than back to the list — there's nothing to see there yet for a
+        // protocol with no content.
+        router.push(`/protocols/${data.protocol.id}`);
+      } else {
+        onSaved();
+      }
     } catch {
       setErrors(["Couldn't reach the server."]);
     } finally {
@@ -281,8 +290,9 @@ export function ProtocolDialog({
             </div>
           ) : (
             <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-              You&apos;ll be able to build this protocol&apos;s content directly in Specibase
-              soon. For now, this saves just its details.
+              {isEdit
+                ? "This protocol's content is written on its own page — open it from the Protocols list to edit."
+                : "You'll be taken to a page to start writing this protocol's content once it's created."}
             </p>
           )}
 

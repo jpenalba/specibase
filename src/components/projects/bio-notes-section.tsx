@@ -81,7 +81,12 @@ function BlockCard({
           placeholder="Block title"
           className="font-medium"
         />
-        <MarkdownEditor projectId={projectId} value={contentDraft} onChange={setContentDraft} rows={10} />
+        <MarkdownEditor
+          uploadUrl={`/api/projects/${projectId}/images`}
+          value={contentDraft}
+          onChange={setContentDraft}
+          rows={10}
+        />
         <div className="flex gap-2">
           <Button onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : "Save"}
@@ -186,7 +191,12 @@ function AddBlockForm({
         className="font-medium"
         autoFocus
       />
-      <MarkdownEditor projectId={projectId} value={content} onChange={setContent} rows={10} />
+      <MarkdownEditor
+        uploadUrl={`/api/projects/${projectId}/images`}
+        value={content}
+        onChange={setContent}
+        rows={10}
+      />
       <div className="flex gap-2">
         <Button onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save"}

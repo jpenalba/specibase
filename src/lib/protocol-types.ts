@@ -10,6 +10,6 @@ export const PROTOCOL_TYPE_LABELS: Record<ProtocolType, string> = {
 };
 
 // How a protocol's content is provided — an uploaded, ready-made PDF, or
-// (eventually) built directly in Specibase. The in-app builder itself
-// isn't designed yet, so a "built" protocol just has no content for now.
+// a markdown body written directly in Specibase (see
+// src/app/protocols/[id]/page.tsx and the `content` column).
 export type ProtocolSourceType = "pdf" | "built";
