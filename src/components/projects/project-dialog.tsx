@@ -33,11 +33,20 @@ type FormState = {
   status: ProjectStatus;
 };
 
+function todayDDMMYYYY(): string {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${now.getFullYear()}`;
+}
+
 function emptyForm(): FormState {
   return {
     name: "",
     description: "",
-    startDate: "",
+    // Defaults to today, still a plain editable field if the project
+    // actually started on a different day.
+    startDate: todayDDMMYYYY(),
     owner: "",
     collaborators: "",
     focalGroup: "",
