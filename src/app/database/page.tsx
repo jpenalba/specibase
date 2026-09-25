@@ -18,7 +18,7 @@ import { LayerPanel } from "@/components/database/layer-panel";
 import { SampleTable } from "@/components/samples/sample-table";
 import { FieldPickerButton } from "@/components/samples/field-picker";
 import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
-import { ManageCustomFieldsDialog } from "@/components/samples/manage-custom-fields-dialog";
+import { ManageSampleColumnsDialog } from "@/components/samples/manage-sample-columns-dialog";
 import { Button } from "@/components/ui/button";
 
 export default function DatabasePage() {
@@ -396,15 +396,17 @@ export default function DatabasePage() {
         </div>
         <div className="flex items-center gap-3">
           <FieldPickerButton selected={selected} onToggle={toggle} />
-          <ManageCustomFieldsDialog
-            columns={customColumns}
-            onSaved={reloadCustomColumns}
-            trigger={
-              <Button variant="outline" size="sm">
-                Manage other fields
-              </Button>
-            }
-          />
+          {editMode && (
+            <ManageSampleColumnsDialog
+              columns={customColumns}
+              onSaved={reloadCustomColumns}
+              trigger={
+                <Button variant="outline" size="sm">
+                  Manage columns
+                </Button>
+              }
+            />
+          )}
           {!editMode && (
             <Button
               variant="outline"
@@ -426,7 +428,6 @@ export default function DatabasePage() {
           allIdentifiers={samples.map((s) => s.primary_identifier)}
           visibleOptionalKeys={selected}
           customColumns={customColumns}
-          onCustomColumnAdded={addColumnLocally}
           hiddenSampleIds={hiddenSampleIds}
           onToggleHidden={toggleSampleHidden}
           highlightedSampleId={highlightedSampleId}

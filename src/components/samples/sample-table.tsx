@@ -61,7 +61,6 @@ export function SampleTable({
   allIdentifiers,
   visibleOptionalKeys,
   customColumns = [],
-  onCustomColumnAdded,
   hiddenSampleIds,
   onToggleHidden,
   highlightedSampleId,
@@ -78,11 +77,11 @@ export function SampleTable({
   // before it round-trips to the server.
   allIdentifiers: string[];
   visibleOptionalKeys: string[];
-  // "Other: specify" fields — shown as extra columns alongside the preset
-  // optional ones, and passed through to the row edit dialog so a new one
-  // can be added from there too.
+  // "Other: specify" custom columns — shown as extra columns alongside the
+  // preset optional ones, and passed through to the row edit dialog so a
+  // value can be filled in there too (they're created via the "Manage
+  // columns" dialog in edit mode, not from here).
   customColumns?: SampleCustomColumn[];
-  onCustomColumnAdded?: (column: SampleCustomColumn) => void;
   // Samples unticked here are excluded from the map — the tick box sits to
   // the left of every other column.
   hiddenSampleIds: Set<string>;
@@ -631,7 +630,6 @@ export function SampleTable({
         onClose={() => setEditingSample(null)}
         onSaved={onSampleUpdated}
         customColumns={customColumns}
-        onCustomColumnAdded={onCustomColumnAdded}
       />
     </div>
   );

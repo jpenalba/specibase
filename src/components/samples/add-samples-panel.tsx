@@ -40,6 +40,11 @@ export function AddSamplesPanel({
 }: {
   fixedProjectId?: string;
   onUploaded?: (inserted: SampleRecord[]) => void;
+  // Existing "Other: specify" custom columns — shown as fillable fields in
+  // the Add sample dialog, and reused (by exact label match) rather than
+  // duplicated when a CSV import's header doesn't match a predefined
+  // field. New ones are only ever created via Import CSV here or the
+  // Manage columns dialog in edit mode, never from the Add sample dialog.
   customColumns?: SampleCustomColumn[];
   onCustomColumnAdded?: (column: SampleCustomColumn) => void;
 }) {
@@ -138,14 +143,18 @@ export function AddSamplesPanel({
         </p>
         <div className="flex flex-wrap gap-2">
           <FieldPickerButton selected={selected} onToggle={toggle} />
-          <ImportDialog takenIdentifiers={takenIdentifiers} onStage={stageMany} />
+          <ImportDialog
+            takenIdentifiers={takenIdentifiers}
+            onStage={stageMany}
+            customColumns={customColumns}
+            onCustomColumnAdded={onCustomColumnAdded}
+          />
           <TemplateDialog selected={selected} onToggle={toggle} />
           <AddSampleDialog
             visibleOptionalKeys={selected}
             takenIdentifiers={takenIdentifiers}
             onStage={stageOne}
             customColumns={customColumns}
-            onCustomColumnAdded={onCustomColumnAdded}
           />
         </div>
       </div>

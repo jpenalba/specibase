@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SpeciesInput } from "./species-input";
-import { AddOtherFieldControl } from "./add-other-field-control";
 import {
   Dialog,
   DialogContent,
@@ -30,16 +29,14 @@ export function AddSampleDialog({
   takenIdentifiers,
   onStage,
   customColumns = [],
-  onCustomColumnAdded,
 }: {
   visibleOptionalKeys: string[];
   takenIdentifiers: string[];
   onStage: (row: RawRow) => void;
-  // "Other: specify" fields — optional so callers that don't need them
-  // (e.g. Collections' staging flow, which imports into a different table
-  // with no sample_id yet to attach values to) can leave both out.
+  // Existing "Other: specify" custom columns (see manage-sample-columns-
+  // dialog.tsx, which is where they're created) — shown here so a value
+  // can be filled in for this sample, but not created from here.
   customColumns?: SampleCustomColumn[];
-  onCustomColumnAdded?: (column: SampleCustomColumn) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<RawRow>({});
@@ -141,7 +138,7 @@ export function AddSampleDialog({
             </div>
           </div>
 
-          {(optionalFields.length > 0 || customColumns.length > 0 || onCustomColumnAdded) && (
+          {(optionalFields.length > 0 || customColumns.length > 0) && (
             <div className="grid grid-cols-2 gap-3">
               {optionalFields.map((field) => (
                 <div key={field.key} className="grid gap-1.5">
@@ -183,7 +180,6 @@ export function AddSampleDialog({
                   </div>
                 );
               })}
-              {onCustomColumnAdded && <AddOtherFieldControl onAdded={onCustomColumnAdded} />}
             </div>
           )}
 

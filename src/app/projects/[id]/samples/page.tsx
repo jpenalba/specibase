@@ -19,7 +19,7 @@ import { SampleTable } from "@/components/samples/sample-table";
 import { FieldPickerButton } from "@/components/samples/field-picker";
 import { SamplePicker } from "@/components/projects/sample-picker";
 import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
-import { ManageCustomFieldsDialog } from "@/components/samples/manage-custom-fields-dialog";
+import { ManageSampleColumnsDialog } from "@/components/samples/manage-sample-columns-dialog";
 import { MarkerStylePanel } from "@/components/projects/marker-style-panel";
 import { Button } from "@/components/ui/button";
 import {
@@ -332,15 +332,17 @@ export default function ProjectSamplesPage() {
             Export CSV
           </Button>
           <FieldPickerButton selected={selected} onToggle={toggle} />
-          <ManageCustomFieldsDialog
-            columns={customColumns}
-            onSaved={reloadCustomColumns}
-            trigger={
-              <Button variant="outline" size="sm">
-                Manage other fields
-              </Button>
-            }
-          />
+          {editMode && (
+            <ManageSampleColumnsDialog
+              columns={customColumns}
+              onSaved={reloadCustomColumns}
+              trigger={
+                <Button variant="outline" size="sm">
+                  Manage columns
+                </Button>
+              }
+            />
+          )}
           {!editMode && (
             <Button
               variant="outline"
@@ -359,7 +361,6 @@ export default function ProjectSamplesPage() {
         allIdentifiers={samples.map((s) => s.primary_identifier)}
         visibleOptionalKeys={selected}
         customColumns={customColumns}
-        onCustomColumnAdded={addColumnLocally}
         hiddenSampleIds={hiddenSampleIds}
         onToggleHidden={toggleSampleHidden}
         highlightedSampleId={highlightedSampleId}

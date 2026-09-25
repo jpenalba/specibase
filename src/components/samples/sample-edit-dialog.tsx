@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SpeciesInput } from "./species-input";
-import { AddOtherFieldControl } from "./add-other-field-control";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +29,6 @@ export function SampleEditDialog({
   onClose,
   onSaved,
   customColumns = [],
-  onCustomColumnAdded,
 }: {
   // null closes the dialog — controlled entirely by whether a sample is
   // being edited, rather than a separate open flag that could drift.
@@ -40,8 +38,10 @@ export function SampleEditDialog({
   otherIdentifiers: string[];
   onClose: () => void;
   onSaved: (sample: SampleRecord) => void;
+  // Existing "Other: specify" custom columns (see manage-sample-columns-
+  // dialog.tsx, which is where they're created) — shown here so a value
+  // can be filled in for this sample, but not created from here.
   customColumns?: SampleCustomColumn[];
-  onCustomColumnAdded?: (column: SampleCustomColumn) => void;
 }) {
   // The parent remounts this component (via a changing `key`) every time a
   // new edit is opened, so a lazy initializer is enough to seed the form —
@@ -216,7 +216,6 @@ export function SampleEditDialog({
                 </div>
               );
             })}
-            {onCustomColumnAdded && <AddOtherFieldControl onAdded={onCustomColumnAdded} />}
           </div>
 
           <DialogFooter>
