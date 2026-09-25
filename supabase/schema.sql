@@ -105,7 +105,10 @@ create table if not exists projects (
   -- and 0018_more_marker_shapes.sql/0019_drop_cross_shape.sql.
   marker_style_field text,
   marker_color text,
-  marker_shape text check (marker_shape in ('circle', 'square', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star'))
+  marker_shape text check (marker_shape in ('circle', 'square', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star')),
+  -- Whether the map hides samples with no value for marker_style_field
+  -- instead of always showing them — see 0029_marker_hide_no_value.sql.
+  marker_hide_no_value boolean not null default false
 );
 
 create table if not exists sample_projects (

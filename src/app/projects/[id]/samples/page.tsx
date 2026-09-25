@@ -111,6 +111,7 @@ export default function ProjectSamplesPage() {
   const markerStyleField = project?.marker_style_field ?? null;
   const singleColor = project?.marker_color ?? MAIN_DATABASE_COLOR;
   const singleShape = project?.marker_shape ?? DEFAULT_LAYER_SHAPE;
+  const hideNoValue = project?.marker_hide_no_value ?? false;
 
   const categories = useMemo(
     () =>
@@ -127,9 +128,19 @@ export default function ProjectSamplesPage() {
         markerStyleField,
         singleColor,
         singleShape,
-        markerStyles
+        markerStyles,
+        hideNoValue
       ),
-    [projectId, tableSamples, linkedSampleIds, markerStyleField, singleColor, singleShape, markerStyles]
+    [
+      projectId,
+      tableSamples,
+      linkedSampleIds,
+      markerStyleField,
+      singleColor,
+      singleShape,
+      markerStyles,
+      hideNoValue,
+    ]
   );
   const visibleLayerIds = useMemo(() => new Set([projectId]), [projectId]);
 
@@ -157,6 +168,10 @@ export default function ProjectSamplesPage() {
 
   function handleSingleStyleChange(color: string, shape: LayerShape) {
     patchProject({ marker_color: color, marker_shape: shape });
+  }
+
+  function handleHideNoValueChange(hide: boolean) {
+    patchProject({ marker_hide_no_value: hide });
   }
 
   async function handleCategoryStyleChange(value: string, color: string, shape: LayerShape) {
@@ -302,6 +317,8 @@ export default function ProjectSamplesPage() {
         onCategoryStyleChange={handleCategoryStyleChange}
         onCategoryStyleReset={handleCategoryStyleReset}
         fields={markerStyleFields}
+        hideNoValue={hideNoValue}
+        onHideNoValueChange={handleHideNoValueChange}
       />
 
       <div className="flex h-[55vh] min-h-[420px] overflow-hidden rounded-lg border border-border">

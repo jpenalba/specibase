@@ -72,7 +72,11 @@ export function buildProjectMapLayer(
   markerStyleField: string | null,
   singleColor: string,
   singleShape: LayerShape,
-  markerStyles: MarkerStyle[]
+  markerStyles: MarkerStyle[],
+  // When true, samples with no value for markerStyleField are dropped from
+  // the map (and its legend) entirely, rather than always shown grouped
+  // under "(No value)". Only meaningful once a field is chosen.
+  hideNoValue: boolean = false
 ): MapLayer {
   if (!markerStyleField) {
     return {
@@ -86,21 +90,29 @@ export function buildProjectMapLayer(
 
   const categories = resolveCategoryStyles(tableSamples, markerStyleField, markerStyles);
   const styleByValue = new Map(categories.map((c) => [c.value, { color: c.color, shape: c.shape }]));
+  const noValueSampleIds = new Set<string>();
   const sampleStyles = new Map(
     tableSamples.map((s) => {
       const raw = s[markerStyleField];
       const value = raw === undefined || raw === null || String(raw).trim() === "" ? "" : String(raw);
+      if (value === "") noValueSampleIds.add(s.id);
       return [s.id, styleByValue.get(value) ?? { color: singleColor, shape: singleShape }];
     })
   );
+
+  const sampleIds = hideNoValue
+    ? new Set([...linkedSampleIds].filter((id) => !noValueSampleIds.has(id)))
+    : linkedSampleIds;
 
   return {
     id: projectId,
     label: "This project",
     color: singleColor,
     shape: singleShape,
-    sampleIds: linkedSampleIds,
+    sampleIds,
     sampleStyles,
-    legendEntries: categories.map((c) => ({ label: c.label, color: c.color, shape: c.shape, count: c.count })),
+    legendEntries: categories
+      .filter((c) => !(hideNoValue && c.value === ""))
+      .map((c) => ({ label: c.label, color: c.color, shape: c.shape, count: c.count })),
   };
 }

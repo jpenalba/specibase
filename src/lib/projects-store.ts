@@ -36,6 +36,9 @@ export type Project = {
   marker_style_field: string | null;
   marker_color: string | null;
   marker_shape: LayerShape | null;
+  // Whether the map hides samples with no value for marker_style_field
+  // instead of always showing them in a "(No value)" bucket.
+  marker_hide_no_value: boolean;
 };
 
 export type NewProjectInput = {
@@ -53,6 +56,7 @@ export type NewProjectInput = {
   marker_style_field?: string | null;
   marker_color?: string | null;
   marker_shape?: LayerShape | null;
+  marker_hide_no_value?: boolean;
 };
 
 export type UpdateProjectInput = Partial<NewProjectInput>;
@@ -85,6 +89,7 @@ export async function createProject(input: NewProjectInput): Promise<Project> {
       marker_style_field: input.marker_style_field ?? null,
       marker_color: input.marker_color ?? null,
       marker_shape: input.marker_shape ?? null,
+      marker_hide_no_value: input.marker_hide_no_value ?? false,
     })
     .select()
     .single();
@@ -116,6 +121,7 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
   if (input.marker_style_field !== undefined) patch.marker_style_field = input.marker_style_field;
   if (input.marker_color !== undefined) patch.marker_color = input.marker_color;
   if (input.marker_shape !== undefined) patch.marker_shape = input.marker_shape;
+  if (input.marker_hide_no_value !== undefined) patch.marker_hide_no_value = input.marker_hide_no_value;
 
   const { data, error } = await getSupabase()
     .from(PROJECTS_TABLE)

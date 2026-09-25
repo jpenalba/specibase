@@ -6,6 +6,7 @@ import { LayerShape } from "@/lib/layer-shapes";
 import { CategoryStyle } from "@/lib/marker-style";
 import { StylePicker } from "@/components/database/style-picker";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -34,6 +35,8 @@ export function MarkerStylePanel({
   // resolveCategoryStyles/buildProjectMapLayer need no changes for this,
   // since they already just read `sample[fieldKey]`.
   fields = MARKER_STYLE_FIELDS,
+  hideNoValue,
+  onHideNoValueChange,
 }: {
   fieldKey: string | null;
   onFieldChange: (key: string | null) => void;
@@ -44,8 +47,14 @@ export function MarkerStylePanel({
   onCategoryStyleChange: (value: string, color: string, shape: LayerShape) => void;
   onCategoryStyleReset: (value: string) => void;
   fields?: FieldDef[];
+  // Whether samples with no value for the chosen field are excluded from
+  // the map (and legend) entirely, instead of always shown grouped under
+  // "(No value)".
+  hideNoValue: boolean;
+  onHideNoValueChange: (hide: boolean) => void;
 }) {
   const activeField = fieldKey ? fields.find((f) => f.key === fieldKey) : undefined;
+  const hasNoValueSamples = categories.some((c) => c.value === "");
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
@@ -78,6 +87,16 @@ export function MarkerStylePanel({
             onSetColor={(color) => onSingleStyleChange(color, singleShape)}
             onSetShape={(shape) => onSingleStyleChange(singleColor, shape)}
           />
+        )}
+
+        {activeField && hasNoValueSamples && (
+          <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+            <Checkbox
+              checked={!hideNoValue}
+              onCheckedChange={(checked) => onHideNoValueChange(!checked)}
+            />
+            Show samples with no value
+          </label>
         )}
       </div>
 

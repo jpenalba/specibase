@@ -279,7 +279,8 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
       project?.marker_style_field ?? null,
       project?.marker_color ?? MAIN_DATABASE_COLOR,
       project?.marker_shape ?? DEFAULT_LAYER_SHAPE,
-      markerStyles
+      markerStyles,
+      project?.marker_hide_no_value ?? false
     );
 
     setMapExportProps({ samples: tableSamples, layer });

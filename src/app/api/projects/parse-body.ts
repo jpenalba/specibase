@@ -32,6 +32,7 @@ export type ParsedProjectFields = {
   marker_style_field?: string | null;
   marker_color?: string | null;
   marker_shape?: LayerShape | null;
+  marker_hide_no_value?: boolean;
 };
 
 // Shared between POST (create) and PATCH (update) — pulls the project
@@ -91,6 +92,9 @@ export function parseProjectFields(
     markerColor = typeof body.marker_color === "string" && body.marker_color !== "" ? body.marker_color : null;
   }
 
+  const markerHideNoValue: boolean | undefined =
+    typeof body.marker_hide_no_value === "boolean" ? body.marker_hide_no_value : undefined;
+
   return {
     description: stringField(body, "description"),
     start_date: stringField(body, "start_date"),
@@ -105,5 +109,6 @@ export function parseProjectFields(
     marker_style_field: markerStyleField,
     marker_color: markerColor,
     marker_shape: markerShape,
+    marker_hide_no_value: markerHideNoValue,
   };
 }
