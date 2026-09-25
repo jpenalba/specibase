@@ -5,6 +5,7 @@ import {
   removeMarkerStyle,
 } from "@/lib/project-marker-styles-store";
 import { markerStyleFieldByKey } from "@/lib/fields";
+import { customColumnIdFromKey } from "@/lib/sample-custom-columns-store";
 import { LAYER_SHAPES, LayerShape } from "@/lib/layer-shapes";
 import { apiError } from "@/lib/api-error";
 
@@ -22,8 +23,9 @@ export async function GET(
 }
 
 // One value's color+shape override — field_key must be one of the fields
-// samples can be colored by (see MARKER_STYLE_FIELDS), not just any string,
-// so an override can't silently target a field the UI would never show.
+// samples can be colored by (see MARKER_STYLE_FIELDS) or a sample's
+// "custom:<column id>" field, not just any string, so an override can't
+// silently target a field the UI would never show.
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -33,7 +35,7 @@ export async function PUT(
     const body = await request.json();
 
     const fieldKey = typeof body?.field_key === "string" ? body.field_key : "";
-    if (!markerStyleFieldByKey(fieldKey)) {
+    if (!markerStyleFieldByKey(fieldKey) && customColumnIdFromKey(fieldKey) === null) {
       return NextResponse.json({ errors: [`Unknown marker style field "${fieldKey}"`] }, { status: 400 });
     }
     const fieldValue = typeof body?.field_value === "string" ? body.field_value : undefined;

@@ -1,7 +1,7 @@
 import { SampleRecord } from "./samples-store";
 import { MarkerStyle } from "./project-marker-styles-store";
-import { LayerShape, DEFAULT_LAYER_SHAPE } from "./layer-shapes";
-import { colorForCategoryIndex } from "./layer-colors";
+import { LayerShape } from "./layer-shapes";
+import { colorForCategoryIndex, shapeForCategoryIndex } from "./layer-colors";
 import { MapLayer } from "./layers";
 
 export type CategoryStyle = {
@@ -52,7 +52,7 @@ export function resolveCategoryStyles(
       value,
       label: value === "" ? "(No value)" : value,
       color: override?.color ?? colorForCategoryIndex(index),
-      shape: override?.shape ?? DEFAULT_LAYER_SHAPE,
+      shape: override?.shape ?? shapeForCategoryIndex(index),
       count: counts.get(value) ?? 0,
       isOverridden: Boolean(override),
     };

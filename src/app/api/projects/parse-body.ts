@@ -1,6 +1,7 @@
 import { FOCAL_GROUP_CATEGORIES, FocalGroupCategory } from "@/lib/focal-group";
 import { ProjectStatus } from "@/lib/projects-store";
 import { MARKER_STYLE_FIELDS } from "@/lib/fields";
+import { customColumnIdFromKey } from "@/lib/sample-custom-columns-store";
 import { LAYER_SHAPES, LayerShape } from "@/lib/layer-shapes";
 
 const STATUSES: ProjectStatus[] = ["in_progress", "completed"];
@@ -65,7 +66,8 @@ export function parseProjectFields(
       markerStyleField = null;
     } else if (
       typeof body.marker_style_field === "string" &&
-      MARKER_STYLE_FIELD_KEYS.includes(body.marker_style_field)
+      (MARKER_STYLE_FIELD_KEYS.includes(body.marker_style_field) ||
+        customColumnIdFromKey(body.marker_style_field) !== null)
     ) {
       markerStyleField = body.marker_style_field;
     } else {

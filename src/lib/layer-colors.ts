@@ -1,3 +1,5 @@
+import { LayerShape, LAYER_SHAPES } from "./layer-shapes";
+
 // Fixed categorical order (never cycled/reassigned per-selection). The
 // first 8 are the validated core palette (`node
 // dataviz/scripts/validate_palette.js` — lightness band, chroma floor, and
@@ -54,6 +56,17 @@ export const PICKABLE_LAYER_COLORS = CATEGORICAL_HEX;
 // slot 0 here, since every value is on equal footing.
 export function colorForCategoryIndex(index: number): string {
   return CATEGORICAL_HEX[index % CATEGORICAL_HEX.length];
+}
+
+// Once every color in the palette is used, a category doesn't just repeat
+// a color silently — it moves on to the next shape too (see
+// resolveCategoryStyles), so a marker-style field with more distinct
+// values than colors still reads as visually distinct (color, shape)
+// pairs. Combinations only start repeating past palette-length ×
+// shape-count categories (18 × 7 = 126 here).
+export function shapeForCategoryIndex(index: number): LayerShape {
+  const shapeIndex = Math.floor(index / CATEGORICAL_HEX.length) % LAYER_SHAPES.length;
+  return LAYER_SHAPES[shapeIndex];
 }
 
 // Shared by anything drawing a legend swatch on an HTML5 canvas or into a
