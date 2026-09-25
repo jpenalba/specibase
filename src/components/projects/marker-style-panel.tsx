@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, RotateCcw } from "lucide-react";
-import { MARKER_STYLE_FIELDS, markerStyleFieldByKey } from "@/lib/fields";
+import { MARKER_STYLE_FIELDS, FieldDef } from "@/lib/fields";
 import { LayerShape } from "@/lib/layer-shapes";
 import { CategoryStyle } from "@/lib/marker-style";
 import { StylePicker } from "@/components/database/style-picker";
@@ -29,6 +29,11 @@ export function MarkerStylePanel({
   categories,
   onCategoryStyleChange,
   onCategoryStyleReset,
+  // Defaults to the preset text/select fields; a caller with "Other:
+  // specify" custom fields on samples passes those in too, concatenated —
+  // resolveCategoryStyles/buildProjectMapLayer need no changes for this,
+  // since they already just read `sample[fieldKey]`.
+  fields = MARKER_STYLE_FIELDS,
 }: {
   fieldKey: string | null;
   onFieldChange: (key: string | null) => void;
@@ -38,8 +43,9 @@ export function MarkerStylePanel({
   categories: CategoryStyle[];
   onCategoryStyleChange: (value: string, color: string, shape: LayerShape) => void;
   onCategoryStyleReset: (value: string) => void;
+  fields?: FieldDef[];
 }) {
-  const activeField = fieldKey ? markerStyleFieldByKey(fieldKey) : undefined;
+  const activeField = fieldKey ? fields.find((f) => f.key === fieldKey) : undefined;
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
@@ -56,7 +62,7 @@ export function MarkerStylePanel({
             <DropdownMenuItem onSelect={() => onFieldChange(null)}>
               {SINGLE_COLOR_LABEL}
             </DropdownMenuItem>
-            {MARKER_STYLE_FIELDS.map((field) => (
+            {fields.map((field) => (
               <DropdownMenuItem key={field.key} onSelect={() => onFieldChange(field.key)}>
                 By {field.label}
               </DropdownMenuItem>

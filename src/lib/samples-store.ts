@@ -3,6 +3,7 @@ import { OPTIONAL_FIELDS, FieldDef } from "./fields";
 import { RawRow, validateRow } from "./validation";
 import { parseDDMMYYYY, formatToDDMMYYYY } from "./dates";
 import { matchGbifSpeciesBatch, applyGbifClassificationToRow } from "./gbif";
+import { customColumnIdFromKey, customColumnKey, listAllCustomValues, upsertCustomValues } from "./sample-custom-columns-store";
 
 const TABLE = "samples";
 
@@ -40,7 +41,31 @@ export async function readSamples(): Promise<SampleRecord[]> {
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []) as SampleRecord[];
+  const samples = (data ?? []) as SampleRecord[];
+  return attachCustomValues(samples, await listAllCustomValues());
+}
+
+// Merges "Other: specify" custom field values onto their sample under
+// `custom:<column id>` — see sample-custom-columns-store.ts — so every
+// caller (the table, CSV export, marker style) can read one via plain
+// `sample[key]`, same as any preset field.
+function attachCustomValues(
+  samples: SampleRecord[],
+  values: { column_id: string; sample_id: string; value: string | null }[]
+): SampleRecord[] {
+  if (values.length === 0) return samples;
+  const bySampleId = new Map<string, { column_id: string; value: string | null }[]>();
+  for (const v of values) {
+    const list = bySampleId.get(v.sample_id) ?? [];
+    list.push(v);
+    bySampleId.set(v.sample_id, list);
+  }
+  for (const sample of samples) {
+    for (const v of bySampleId.get(sample.id) ?? []) {
+      if (v.value !== null) sample[customColumnKey(v.column_id)] = v.value;
+    }
+  }
+  return samples;
 }
 
 // Deliberately not filtered by deleted_at — a soft-deleted sample's ID
@@ -82,6 +107,12 @@ export async function insertSample(row: RawRow): Promise<InsertResult> {
   }
 
   const { primary_identifier, species, latitude, longitude, ...rest } = row;
+  // "custom:<column id>" keys aren't real columns on `samples` — pull them
+  // out before building the insert payload and write them to
+  // sample_custom_values separately once the sample itself exists.
+  const customEntries = Object.entries(rest).filter(([key]) => customColumnIdFromKey(key) !== null);
+  for (const [key] of customEntries) delete rest[key];
+
   const insertValues: Record<string, string | number> = {
     primary_identifier: primary_identifier.trim(),
     species: species.trim(),
@@ -110,7 +141,21 @@ export async function insertSample(row: RawRow): Promise<InsertResult> {
     return { ok: false, errors: [error.message] };
   }
 
-  return { ok: true, sample: data as SampleRecord };
+  const sample = data as SampleRecord;
+  if (customEntries.length > 0) {
+    const upserted = await upsertCustomValues(
+      customEntries.map(([key, value]) => ({
+        column_id: customColumnIdFromKey(key)!,
+        sample_id: sample.id,
+        value: value?.trim() ? value.trim() : null,
+      }))
+    );
+    for (const v of upserted) {
+      if (v.value !== null) sample[customColumnKey(v.column_id)] = v.value;
+    }
+  }
+
+  return { ok: true, sample };
 }
 
 // Partial update — only fields present as keys in `row` are changed, so a
@@ -142,8 +187,16 @@ export async function updateSample(id: string, rawRow: RawRow): Promise<InsertRe
 
   const normalized = normalizeDatesForStorage(row);
   const patch: Record<string, string | number | null> = {};
+  // "custom:<column id>" keys aren't real columns on `samples` — collected
+  // here and written to sample_custom_values separately below, instead of
+  // going into the same patch as everything else.
+  const customUpdates: { column_id: string; sample_id: string; value: string | null }[] = [];
   for (const key of Object.keys(rawRow)) {
-    if (key === "primary_identifier") {
+    const customColumnId = customColumnIdFromKey(key);
+    if (customColumnId) {
+      const value = normalized[key]?.trim();
+      customUpdates.push({ column_id: customColumnId, sample_id: id, value: value ? value : null });
+    } else if (key === "primary_identifier") {
       continue;
     } else if (key === "species") {
       patch.species = normalized.species.trim();
@@ -156,12 +209,10 @@ export async function updateSample(id: string, rawRow: RawRow): Promise<InsertRe
     }
   }
 
-  const { data, error } = await getSupabase()
-    .from(TABLE)
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single();
+  const { data, error } =
+    Object.keys(patch).length > 0
+      ? await getSupabase().from(TABLE).update(patch).eq("id", id).select().single()
+      : await getSupabase().from(TABLE).select().eq("id", id).single();
 
   if (error) {
     if (error.code === "23505") {
@@ -173,7 +224,15 @@ export async function updateSample(id: string, rawRow: RawRow): Promise<InsertRe
     return { ok: false, errors: [error.message] };
   }
 
-  return { ok: true, sample: data as SampleRecord };
+  const sample = data as SampleRecord;
+  if (customUpdates.length > 0) {
+    const upserted = await upsertCustomValues(customUpdates);
+    for (const v of upserted) {
+      if (v.value !== null) sample[customColumnKey(v.column_id)] = v.value;
+    }
+  }
+
+  return { ok: true, sample };
 }
 
 export type DeleteResult =

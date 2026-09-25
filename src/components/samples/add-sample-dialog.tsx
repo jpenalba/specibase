@@ -9,10 +9,12 @@ import {
 import { DATE_FORMAT_LABEL } from "@/lib/dates";
 import { RawRow, validateRow } from "@/lib/validation";
 import { GbifClassification } from "@/lib/gbif";
+import { SampleCustomColumn, customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SpeciesInput } from "./species-input";
+import { AddOtherFieldControl } from "./add-other-field-control";
 import {
   Dialog,
   DialogContent,
@@ -27,10 +29,17 @@ export function AddSampleDialog({
   visibleOptionalKeys,
   takenIdentifiers,
   onStage,
+  customColumns = [],
+  onCustomColumnAdded,
 }: {
   visibleOptionalKeys: string[];
   takenIdentifiers: string[];
   onStage: (row: RawRow) => void;
+  // "Other: specify" fields — optional so callers that don't need them
+  // (e.g. Collections' staging flow, which imports into a different table
+  // with no sample_id yet to attach values to) can leave both out.
+  customColumns?: SampleCustomColumn[];
+  onCustomColumnAdded?: (column: SampleCustomColumn) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<RawRow>({});
@@ -132,7 +141,7 @@ export function AddSampleDialog({
             </div>
           </div>
 
-          {optionalFields.length > 0 && (
+          {(optionalFields.length > 0 || customColumns.length > 0 || onCustomColumnAdded) && (
             <div className="grid grid-cols-2 gap-3">
               {optionalFields.map((field) => (
                 <div key={field.key} className="grid gap-1.5">
@@ -161,6 +170,20 @@ export function AddSampleDialog({
                   )}
                 </div>
               ))}
+              {customColumns.map((column) => {
+                const field = customColumnToFieldDef(column);
+                return (
+                  <div key={field.key} className="grid gap-1.5">
+                    <Label htmlFor={field.key}>{field.label}</Label>
+                    <Input
+                      id={field.key}
+                      value={values[field.key] ?? ""}
+                      onChange={(e) => update(field.key, e.target.value)}
+                    />
+                  </div>
+                );
+              })}
+              {onCustomColumnAdded && <AddOtherFieldControl onAdded={onCustomColumnAdded} />}
             </div>
           )}
 

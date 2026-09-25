@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { RawRow } from "@/lib/validation";
 import { SampleRecord } from "@/lib/samples-store";
+import { SampleCustomColumn } from "@/lib/sample-custom-columns-store";
 import { useOptionalFields } from "@/lib/use-optional-fields";
 import { StagingTable, StagedSample } from "@/components/samples/staging-table";
 import { AddSampleDialog } from "@/components/samples/add-sample-dialog";
@@ -34,9 +35,13 @@ function newClientId() {
 export function AddSamplesPanel({
   fixedProjectId,
   onUploaded,
+  customColumns = [],
+  onCustomColumnAdded,
 }: {
   fixedProjectId?: string;
   onUploaded?: (inserted: SampleRecord[]) => void;
+  customColumns?: SampleCustomColumn[];
+  onCustomColumnAdded?: (column: SampleCustomColumn) => void;
 }) {
   const { selected, toggle } = useOptionalFields();
   const [dbIdentifiers, setDbIdentifiers] = useState<string[]>([]);
@@ -139,6 +144,8 @@ export function AddSamplesPanel({
             visibleOptionalKeys={selected}
             takenIdentifiers={takenIdentifiers}
             onStage={stageOne}
+            customColumns={customColumns}
+            onCustomColumnAdded={onCustomColumnAdded}
           />
         </div>
       </div>

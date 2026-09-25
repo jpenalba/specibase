@@ -7,9 +7,11 @@ import { Project, SampleProjectLink } from "@/lib/projects-store";
 import { MapLayer } from "@/lib/layers";
 import { MAIN_DATABASE_COLOR } from "@/lib/layer-colors";
 import { DEFAULT_LAYER_SHAPE, LayerShape } from "@/lib/layer-shapes";
-import { getVisibleColumns } from "@/lib/fields";
+import { getVisibleColumns, MARKER_STYLE_FIELDS } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
+import { useSampleCustomColumns } from "@/lib/use-sample-custom-columns";
+import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { MarkerStyle } from "@/lib/project-marker-styles-store";
 import { buildProjectMapLayer, resolveCategoryStyles } from "@/lib/marker-style";
 import { SampleMap } from "@/components/database/sample-map";
@@ -17,6 +19,7 @@ import { SampleTable } from "@/components/samples/sample-table";
 import { FieldPickerButton } from "@/components/samples/field-picker";
 import { SamplePicker } from "@/components/projects/sample-picker";
 import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
+import { ManageCustomFieldsDialog } from "@/components/samples/manage-custom-fields-dialog";
 import { MarkerStylePanel } from "@/components/projects/marker-style-panel";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,7 +54,15 @@ export default function ProjectSamplesPage() {
   const [linkError, setLinkError] = useState<string | null>(null);
 
   const { selected, toggle } = useOptionalFields();
-  const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
+  const { columns: customColumns, addColumnLocally, reload: reloadCustomColumns } = useSampleCustomColumns();
+  const popupColumns = useMemo(
+    () => [...getVisibleColumns(selected), ...customColumns.map(customColumnToFieldDef)],
+    [selected, customColumns]
+  );
+  const markerStyleFields = useMemo(
+    () => [...MARKER_STYLE_FIELDS, ...customColumns.map(customColumnToFieldDef)],
+    [customColumns]
+  );
 
   const load = useCallback(() => {
     Promise.all([
@@ -290,6 +301,7 @@ export default function ProjectSamplesPage() {
         categories={categories}
         onCategoryStyleChange={handleCategoryStyleChange}
         onCategoryStyleReset={handleCategoryStyleReset}
+        fields={markerStyleFields}
       />
 
       <div className="flex h-[55vh] min-h-[420px] overflow-hidden rounded-lg border border-border">
@@ -320,6 +332,15 @@ export default function ProjectSamplesPage() {
             Export CSV
           </Button>
           <FieldPickerButton selected={selected} onToggle={toggle} />
+          <ManageCustomFieldsDialog
+            columns={customColumns}
+            onSaved={reloadCustomColumns}
+            trigger={
+              <Button variant="outline" size="sm">
+                Manage other fields
+              </Button>
+            }
+          />
           {!editMode && (
             <Button
               variant="outline"
@@ -337,6 +358,8 @@ export default function ProjectSamplesPage() {
         samples={tableSamples}
         allIdentifiers={samples.map((s) => s.primary_identifier)}
         visibleOptionalKeys={selected}
+        customColumns={customColumns}
+        onCustomColumnAdded={addColumnLocally}
         hiddenSampleIds={hiddenSampleIds}
         onToggleHidden={toggleSampleHidden}
         highlightedSampleId={highlightedSampleId}
@@ -378,7 +401,12 @@ export default function ProjectSamplesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <AddSamplesPanel fixedProjectId={projectId} onUploaded={load} />
+          <AddSamplesPanel
+            fixedProjectId={projectId}
+            onUploaded={load}
+            customColumns={customColumns}
+            onCustomColumnAdded={addColumnLocally}
+          />
         </CardContent>
       </Card>
     </div>

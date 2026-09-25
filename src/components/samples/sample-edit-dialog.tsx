@@ -6,10 +6,12 @@ import { DATE_FORMAT_LABEL } from "@/lib/dates";
 import { RawRow, validateRow } from "@/lib/validation";
 import { SampleRecord, sampleToRawRow } from "@/lib/samples-store";
 import { GbifClassification } from "@/lib/gbif";
+import { SampleCustomColumn, customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SpeciesInput } from "./species-input";
+import { AddOtherFieldControl } from "./add-other-field-control";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,8 @@ export function SampleEditDialog({
   otherIdentifiers,
   onClose,
   onSaved,
+  customColumns = [],
+  onCustomColumnAdded,
 }: {
   // null closes the dialog — controlled entirely by whether a sample is
   // being edited, rather than a separate open flag that could drift.
@@ -36,12 +40,14 @@ export function SampleEditDialog({
   otherIdentifiers: string[];
   onClose: () => void;
   onSaved: (sample: SampleRecord) => void;
+  customColumns?: SampleCustomColumn[];
+  onCustomColumnAdded?: (column: SampleCustomColumn) => void;
 }) {
   // The parent remounts this component (via a changing `key`) every time a
   // new edit is opened, so a lazy initializer is enough to seed the form —
   // no effect needed to resync `values` when `sample` changes.
   const [values, setValues] = useState<RawRow>(() =>
-    sample ? sampleToRawRow(sample, ALL_FIELDS) : {}
+    sample ? sampleToRawRow(sample, [...ALL_FIELDS, ...customColumns.map(customColumnToFieldDef)]) : {}
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -197,6 +203,20 @@ export function SampleEditDialog({
                 )}
               </div>
             ))}
+            {customColumns.map((column) => {
+              const field = customColumnToFieldDef(column);
+              return (
+                <div key={field.key} className="grid gap-1.5">
+                  <Label htmlFor={`edit-${field.key}`}>{field.label}</Label>
+                  <Input
+                    id={`edit-${field.key}`}
+                    value={values[field.key] ?? ""}
+                    onChange={(e) => update(field.key, e.target.value)}
+                  />
+                </div>
+              );
+            })}
+            {onCustomColumnAdded && <AddOtherFieldControl onAdded={onCustomColumnAdded} />}
           </div>
 
           <DialogFooter>

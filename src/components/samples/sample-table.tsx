@@ -6,6 +6,7 @@ import { getVisibleColumns, FieldDef } from "@/lib/fields";
 import { DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
 import { RawRow } from "@/lib/validation";
 import { SampleRecord, sampleToRawRow } from "@/lib/samples-store";
+import { SampleCustomColumn, customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { incrementSeriesValue } from "@/lib/series-fill";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,6 +60,8 @@ export function SampleTable({
   samples,
   allIdentifiers,
   visibleOptionalKeys,
+  customColumns = [],
+  onCustomColumnAdded,
   hiddenSampleIds,
   onToggleHidden,
   highlightedSampleId,
@@ -75,6 +78,11 @@ export function SampleTable({
   // before it round-trips to the server.
   allIdentifiers: string[];
   visibleOptionalKeys: string[];
+  // "Other: specify" fields — shown as extra columns alongside the preset
+  // optional ones, and passed through to the row edit dialog so a new one
+  // can be added from there too.
+  customColumns?: SampleCustomColumn[];
+  onCustomColumnAdded?: (column: SampleCustomColumn) => void;
   // Samples unticked here are excluded from the map — the tick box sits to
   // the left of every other column.
   hiddenSampleIds: Set<string>;
@@ -95,7 +103,7 @@ export function SampleTable({
   // project" alongside the sample's usual Edit/Delete.
   extraRowAction?: { label: string; onSelect: (sample: SampleRecord) => void };
 }) {
-  const columns = getVisibleColumns(visibleOptionalKeys);
+  const columns = [...getVisibleColumns(visibleOptionalKeys), ...customColumns.map(customColumnToFieldDef)];
   const [sort, setSort] = useState<SortState | null>(null);
   // Sample ID and species only for now — Genus/Family/Order will join
   // this once the schema has somewhere to put them.
@@ -622,6 +630,8 @@ export function SampleTable({
         otherIdentifiers={allIdentifiers.filter((id) => id !== editingSample?.primary_identifier)}
         onClose={() => setEditingSample(null)}
         onSaved={onSampleUpdated}
+        customColumns={customColumns}
+        onCustomColumnAdded={onCustomColumnAdded}
       />
     </div>
   );

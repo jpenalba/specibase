@@ -11,11 +11,14 @@ import { LayerShape } from "@/lib/layer-shapes";
 import { getVisibleColumns } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
+import { useSampleCustomColumns } from "@/lib/use-sample-custom-columns";
+import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { SampleMap } from "@/components/database/sample-map";
 import { LayerPanel } from "@/components/database/layer-panel";
 import { SampleTable } from "@/components/samples/sample-table";
 import { FieldPickerButton } from "@/components/samples/field-picker";
 import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
+import { ManageCustomFieldsDialog } from "@/components/samples/manage-custom-fields-dialog";
 import { Button } from "@/components/ui/button";
 
 export default function DatabasePage() {
@@ -44,7 +47,11 @@ export default function DatabasePage() {
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
   const { selected, toggle } = useOptionalFields();
-  const popupColumns = useMemo(() => getVisibleColumns(selected), [selected]);
+  const { columns: customColumns, addColumnLocally, reload: reloadCustomColumns } = useSampleCustomColumns();
+  const popupColumns = useMemo(
+    () => [...getVisibleColumns(selected), ...customColumns.map(customColumnToFieldDef)],
+    [selected, customColumns]
+  );
 
   // Reloads samples and projects/links together — used on first load and
   // again after a batch is uploaded from the panel below, since a newly
@@ -287,7 +294,11 @@ export default function DatabasePage() {
       </div>
 
       <div className={showAddSamples ? "" : "hidden"}>
-        <AddSamplesPanel onUploaded={loadSamplesAndProjects} />
+        <AddSamplesPanel
+          onUploaded={loadSamplesAndProjects}
+          customColumns={customColumns}
+          onCustomColumnAdded={addColumnLocally}
+        />
       </div>
 
       {backfillMessage && (
@@ -385,6 +396,15 @@ export default function DatabasePage() {
         </div>
         <div className="flex items-center gap-3">
           <FieldPickerButton selected={selected} onToggle={toggle} />
+          <ManageCustomFieldsDialog
+            columns={customColumns}
+            onSaved={reloadCustomColumns}
+            trigger={
+              <Button variant="outline" size="sm">
+                Manage other fields
+              </Button>
+            }
+          />
           {!editMode && (
             <Button
               variant="outline"
@@ -405,6 +425,8 @@ export default function DatabasePage() {
           samples={tableSamples}
           allIdentifiers={samples.map((s) => s.primary_identifier)}
           visibleOptionalKeys={selected}
+          customColumns={customColumns}
+          onCustomColumnAdded={addColumnLocally}
           hiddenSampleIds={hiddenSampleIds}
           onToggleHidden={toggleSampleHidden}
           highlightedSampleId={highlightedSampleId}

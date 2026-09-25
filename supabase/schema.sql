@@ -57,6 +57,30 @@ create table if not exists samples (
   )
 );
 
+-- Fully user-nameable "Other: specify" fields on samples — see
+-- supabase/migrations/0028_sample_custom_columns.sql. Global (not scoped
+-- to a workflow or project), unlike lab_workflow_custom_columns below.
+create table if not exists sample_custom_columns (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+
+  position integer not null,
+  label text not null
+);
+
+create table if not exists sample_custom_values (
+  id uuid primary key default gen_random_uuid(),
+  column_id uuid not null references sample_custom_columns (id) on delete cascade,
+  sample_id uuid not null references samples (id) on delete cascade,
+  updated_at timestamptz not null default now(),
+
+  value text,
+
+  unique (column_id, sample_id)
+);
+
+create index if not exists sample_custom_values_sample_id_idx on sample_custom_values (sample_id);
+
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
@@ -541,6 +565,8 @@ create index if not exists bio_workflow_detail_values_row_id_idx on bio_workflow
 -- do, using the service role key, which bypasses RLS) — this just makes
 -- sure that stays true if an anon-key client ever gets added by mistake.
 alter table samples enable row level security;
+alter table sample_custom_columns enable row level security;
+alter table sample_custom_values enable row level security;
 alter table projects enable row level security;
 alter table sample_projects enable row level security;
 alter table collections enable row level security;
