@@ -8,28 +8,28 @@ const CAPABILITIES = [
     icon: FolderKanban,
     title: "Projects",
     description:
-      "Organize samples by research project, and share one with specific collaborators as a Viewer, Editor, or Owner from its Members dialog. Each project gets its own Info, Samples, Lab Workflow, Bioinformatics, Bio Notes, and References tabs.",
+      "Main functionality of Specibase — create projects, add samples, and manage workflows from start to finish. Compile relevant information, write notes, link protocols and share projects with collaborators to take advantage of the full capability.",
   },
   {
     href: "/database",
     icon: Database,
     title: "Database",
     description:
-      "Your own samples, mapped and searchable — private by default, plus whatever's shared into a project you're a member of. Filter, style markers by any field, and overlay GBIF occurrence data.",
+      "Contains the samples across all projects and collections. The main database can be searched, filtered, and mapped with markers being styled by any field. Additional feature of being able to overlap a heatmap of GBIF occurrence data for any species.",
   },
   {
     href: "/collections",
     icon: Archive,
     title: "Collections",
     description:
-      "Track external field, museum, or collaborator sample sets as their own map layers — one click copies them into your main database.",
+      "Track field, museum or collaborator sample sets that may be relevant to research but does not necessarily belong to a particular project.",
   },
   {
     href: "/protocols",
     icon: ClipboardList,
     title: "Protocols",
     description:
-      "Keep field, lab, and bioinformatic protocols in one place, either as an uploaded PDF or built directly in Specibase with its own markdown editor.",
+      "Keep field, lab, and bioinformatic protocols in one place either as an uploaded PDF or build directly in Specibase and link protocols to specific projects.",
   },
 ];
 
@@ -70,11 +70,11 @@ export default function Home() {
         <div className="flex flex-col gap-3">
           <h1 className="text-3xl font-semibold sm:text-4xl">Specibase</h1>
           <p className="mx-auto max-w-xl text-balance text-muted-foreground">
-            A sample database and interactive map for evolutionary biology
-            field collections — samples, lab and bioinformatic workflows,
-            collections, and protocols, all in one place. Your own private
-            workspace by default; share a project with named collaborators
-            when you want a second set of hands on it.
+            A highly customizable project tracker and sample database for
+            evolutionary biology workflows. Customize your own private
+            workspace tracking samples from the field, lab, data analysis,
+            and museum collections or share with collaborators and lab
+            members.
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-3">
