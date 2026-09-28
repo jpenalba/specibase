@@ -1,59 +1,42 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Protocol } from "@/lib/protocols-store";
-import { ProtocolProjectLink } from "@/lib/projects-store";
 import { ProtocolDialog } from "@/components/protocols/protocol-dialog";
 import { ProtocolRow } from "@/components/protocols/protocol-row";
 import { ManageProtocolsDialog } from "@/components/projects/manage-protocols-dialog";
+import { useProjectRole, canEdit } from "@/lib/project-role-context";
 import { Button } from "@/components/ui/button";
 
 // This project's attached protocols — a filtered slice of the global
 // Protocols list, same relationship as the Samples tab has to Database.
 export default function ProjectProtocolsPage() {
   const { id: projectId } = useParams<{ id: string }>();
+  const editable = canEdit(useProjectRole());
 
   const [protocols, setProtocols] = useState<Protocol[]>([]);
-  const [links, setLinks] = useState<ProtocolProjectLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    Promise.all([
-      fetch("/api/protocols").then((res) => res.json()),
-      fetch("/api/projects").then((res) => res.json()),
-    ])
-      .then(([protocolsData, projectsData]) => {
-        if (protocolsData.errors?.length > 0) {
-          setError(protocolsData.errors.join(" "));
-          return;
+    fetch(`/api/projects/${projectId}/protocols`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.errors?.length > 0) {
+          setError(data.errors.join(" "));
+        } else {
+          setError(null);
+          setProtocols(data.protocols ?? []);
         }
-        if (projectsData.errors?.length > 0) {
-          setError(projectsData.errors.join(" "));
-          return;
-        }
-        setError(null);
-        setProtocols(protocolsData.protocols ?? []);
-        setLinks(projectsData.protocolLinks ?? []);
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  const attachedIds = useMemo(
-    () => new Set(links.filter((l) => l.project_id === projectId).map((l) => l.protocol_id)),
-    [links, projectId]
-  );
-
-  const attached = useMemo(
-    () => protocols.filter((p) => attachedIds.has(p.id)),
-    [protocols, attachedIds]
-  );
 
   function attachProtocol(protocol: Protocol) {
     fetch(`/api/projects/${projectId}/protocols`, {
@@ -82,15 +65,17 @@ export default function ProjectProtocolsPage() {
             attach it here.
           </p>
         </div>
-        <div className="flex shrink-0 gap-2">
-          <ManageProtocolsDialog
-            projectId={projectId}
-            attachedProtocols={attached}
-            onSaved={load}
-            trigger={<Button variant="outline">Manage protocols</Button>}
-          />
-          <ProtocolDialog onSaved={load} afterCreate={attachProtocol} trigger={<Button>New protocol</Button>} />
-        </div>
+        {editable && (
+          <div className="flex shrink-0 gap-2">
+            <ManageProtocolsDialog
+              projectId={projectId}
+              attachedProtocols={protocols}
+              onSaved={load}
+              trigger={<Button variant="outline">Manage protocols</Button>}
+            />
+            <ProtocolDialog onSaved={load} afterCreate={attachProtocol} trigger={<Button>New protocol</Button>} />
+          </div>
+        )}
       </div>
 
       {error && (
@@ -105,16 +90,17 @@ export default function ProjectProtocolsPage() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
-      ) : attached.length === 0 ? (
+      ) : protocols.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
           No protocols attached yet.
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {attached.map((protocol) => (
+          {protocols.map((protocol) => (
             <ProtocolRow
               key={protocol.id}
               protocol={protocol}
+              editable={editable}
               onSaved={load}
               onDeleted={() => handleDeleted(protocol.id)}
             />

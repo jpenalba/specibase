@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateLabNotesBlock, UpdateLabNotesBlockInput } from "@/lib/project-lab-notes-store";
+import { requireUser } from "@/lib/require-user";
+import { requireProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ blockId: string }> }
+  { params }: { params: Promise<{ id: string; blockId: string }> }
 ) {
   try {
-    const { blockId } = await params;
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id, blockId } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const body = await request.json();
 
     const input: UpdateLabNotesBlockInput = {};

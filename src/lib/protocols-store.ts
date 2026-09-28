@@ -42,6 +42,28 @@ export async function listProtocols(ownerId: string): Promise<Protocol[]> {
   return (data ?? []) as Protocol[];
 }
 
+// Every protocol attached to a project, regardless of who owns it — the
+// project-scoped counterpart to listProtocols above, same "everyone on
+// the project sees it, not just its owner" reasoning as
+// samples-store.ts's readProjectSamples.
+export async function listProjectProtocols(projectId: string): Promise<Protocol[]> {
+  const { data: links, error: linksError } = await getSupabase()
+    .from("protocol_projects")
+    .select("protocol_id")
+    .eq("project_id", projectId);
+  if (linksError) throw new Error(linksError.message);
+  const protocolIds = (links ?? []).map((l) => l.protocol_id as string);
+  if (protocolIds.length === 0) return [];
+
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select("*")
+    .in("id", protocolIds)
+    .order("date_added", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Protocol[];
+}
+
 export async function getProtocol(id: string, ownerId: string): Promise<Protocol | null> {
   const { data, error } = await getSupabase()
     .from(TABLE)

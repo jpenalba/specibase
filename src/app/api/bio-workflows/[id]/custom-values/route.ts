@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BioCustomValueUpsertInput, upsertBioCustomValues } from "@/lib/bio-workflows-store";
+import { BioCustomValueUpsertInput, getBioWorkflow, upsertBioCustomValues } from "@/lib/bio-workflows-store";
+import { requireUser } from "@/lib/require-user";
+import { requireEntityProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 function parseValues(body: unknown): BioCustomValueUpsertInput[] | { error: string } {
@@ -22,8 +24,17 @@ function parseValues(body: unknown): BioCustomValueUpsertInput[] | { error: stri
 // Bulk upsert, same shape as /api/bio-workflows/[id]/entries — one PATCH
 // per edit is enough since custom-column cells are single text fields,
 // not a drag-paint surface.
-export async function PATCH(request: NextRequest) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getBioWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const body = await request.json();
     const values = parseValues(body?.values);
     if ("error" in values) {

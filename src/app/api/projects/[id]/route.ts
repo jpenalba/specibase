@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateProject } from "@/lib/projects-store";
 import { logActivity } from "@/lib/activity-log";
+import { requireUser } from "@/lib/require-user";
+import { requireProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 import { parseProjectFields } from "../parse-body";
 
@@ -9,7 +11,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const body = await request.json();
 
     let name: string | undefined;
@@ -24,7 +31,7 @@ export async function PATCH(
     if ("error" in fields) {
       return NextResponse.json({ errors: [fields.error] }, { status: 400 });
     }
-    const project = await updateProject(id, { name, ...fields });
+    const project = await updateProject(id, { name, ...fields }, auth.user.id);
     await logActivity(
       "project",
       "updated",

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteStep, renameStep } from "@/lib/lab-workflows-store";
+import { deleteStep, getWorkflow, renameStep } from "@/lib/lab-workflows-store";
+import { requireUser } from "@/lib/require-user";
+import { requireEntityProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 export async function PATCH(
@@ -7,7 +9,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; stepId: string }> }
 ) {
   try {
-    const { stepId } = await params;
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id, stepId } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const body = await request.json();
     const label = typeof body?.label === "string" ? body.label.trim() : "";
     if (!label) {
@@ -25,7 +32,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; stepId: string }> }
 ) {
   try {
-    const { stepId } = await params;
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id, stepId } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     await deleteStep(stepId);
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteDetailColumn, renameDetailColumn } from "@/lib/lab-workflows-store";
+import { deleteDetailColumn, getWorkflow, renameDetailColumn } from "@/lib/lab-workflows-store";
+import { requireUser } from "@/lib/require-user";
+import { requireEntityProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ columnId: string }> }
+  { params }: { params: Promise<{ id: string; columnId: string }> }
 ) {
   try {
-    const { columnId } = await params;
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id, columnId } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const body = await request.json();
     const label = typeof body?.label === "string" ? body.label.trim() : "";
     if (!label) {
@@ -22,10 +29,15 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ columnId: string }> }
+  { params }: { params: Promise<{ id: string; columnId: string }> }
 ) {
   try {
-    const { columnId } = await params;
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id, columnId } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     await deleteDetailColumn(columnId);
     return NextResponse.json({ ok: true });
   } catch (error) {

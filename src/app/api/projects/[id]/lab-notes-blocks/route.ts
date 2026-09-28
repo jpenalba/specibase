@@ -4,6 +4,8 @@ import {
   listLabNotesBlocks,
   reorderLabNotesBlocks,
 } from "@/lib/project-lab-notes-store";
+import { requireUser } from "@/lib/require-user";
+import { requireProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 export async function GET(
@@ -11,7 +13,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "viewer");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const blocks = await listLabNotesBlocks(id);
     return NextResponse.json({ blocks });
   } catch (error) {
@@ -24,7 +31,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const body = await request.json();
     const title = typeof body?.title === "string" ? body.title.trim() : "";
     if (!title) {
@@ -45,7 +57,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const body = await request.json();
     const orderedBlockIds = body?.orderedBlockIds;
     if (!Array.isArray(orderedBlockIds) || !orderedBlockIds.every((b) => typeof b === "string")) {

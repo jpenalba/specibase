@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addBioCustomColumn, listBioCustomColumns } from "@/lib/bio-workflows-store";
+import { addBioCustomColumn, getBioWorkflow, listBioCustomColumns } from "@/lib/bio-workflows-store";
+import { requireUser } from "@/lib/require-user";
+import { requireEntityProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 export async function GET(
@@ -7,7 +9,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getBioWorkflow(id), "viewer");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const columns = await listBioCustomColumns(id);
     return NextResponse.json({ columns });
   } catch (error) {
@@ -20,7 +27,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getBioWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const body = await request.json();
     const label = typeof body?.label === "string" ? body.label.trim() : "";
     if (!label) {

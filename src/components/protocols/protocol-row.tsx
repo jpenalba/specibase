@@ -15,10 +15,14 @@ export function ProtocolRow({
   protocol,
   onSaved,
   onDeleted,
+  editable = true,
 }: {
   protocol: Protocol;
   onSaved: () => void;
   onDeleted: () => void;
+  // False on a project's Protocols tab for a Viewer — the standalone
+  // /protocols page (always the signed-in account's own) never sets this.
+  editable?: boolean;
 }) {
   async function handleDelete() {
     if (!window.confirm(`Delete "${protocol.name}"? This can't be undone.`)) return;
@@ -68,27 +72,31 @@ export function ProtocolRow({
             <Link href={`/protocols/${protocol.id}`}>Open</Link>
           </Button>
         )}
-        <ProtocolDialog
-          protocol={protocol}
-          onSaved={onSaved}
-          trigger={
+        {editable && (
+          <>
+            <ProtocolDialog
+              protocol={protocol}
+              onSaved={onSaved}
+              trigger={
+                <button
+                  type="button"
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  aria-label={`Edit ${protocol.name}`}
+                >
+                  <Pencil className="size-4" />
+                </button>
+              }
+            />
             <button
               type="button"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              aria-label={`Edit ${protocol.name}`}
+              onClick={handleDelete}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              aria-label={`Delete ${protocol.name}`}
             >
-              <Pencil className="size-4" />
+              <Trash2 className="size-4" />
             </button>
-          }
-        />
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          aria-label={`Delete ${protocol.name}`}
-        >
-          <Trash2 className="size-4" />
-        </button>
+          </>
+        )}
       </div>
     </div>
   );

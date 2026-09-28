@@ -5,9 +5,12 @@ import { useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Project } from "@/lib/projects-store";
+import { ProjectRole } from "@/lib/project-members-store";
+import { ProjectRoleContext } from "@/lib/project-role-context";
 import { FocalGroupIcon } from "@/components/projects/focal-group-icon";
 import { ProjectStatusBadge } from "@/components/projects/project-status-badge";
 import { ProjectExportDialog } from "@/components/projects/project-export-dialog";
+import { MembersDialog } from "@/components/projects/members-dialog";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -33,6 +36,8 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<ProjectRole | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +58,30 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // The caller's own role on this project — drives the tab pages' edit
+  // affordances (via ProjectRoleContext) and the Members dialog's own
+  // owner-only controls. The server-side requireProjectRole checks on
+  // every route are what actually enforce this; this is just the UI's
+  // best-effort mirror of that.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/projects/${projectId}/members`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.role) setRole(data.role);
+      })
+      .catch(() => {});
+    fetch("/api/profile")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.profile?.id) setCurrentUserId(data.profile.id);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -99,6 +128,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                 <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
               )}
             </div>
+            {currentUserId && <MembersDialog projectId={projectId} currentUserId={currentUserId} viewerRole={role} />}
             <ProjectExportDialog projectId={projectId} />
           </div>
         )}
@@ -125,7 +155,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         </div>
       </div>
 
-      {children}
+      <ProjectRoleContext.Provider value={role}>{children}</ProjectRoleContext.Provider>
     </div>
   );
 }

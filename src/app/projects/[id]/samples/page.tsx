@@ -21,6 +21,7 @@ import { SamplePicker } from "@/components/projects/sample-picker";
 import { AddSamplesPanel } from "@/components/samples/add-samples-panel";
 import { ManageSampleColumnsDialog } from "@/components/samples/manage-sample-columns-dialog";
 import { MarkerStylePanel } from "@/components/projects/marker-style-panel";
+import { useProjectRole, canEdit } from "@/lib/project-role-context";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,6 +38,7 @@ import {
 // there's nothing to switch between here.
 export default function ProjectSamplesPage() {
   const { id: projectId } = useParams<{ id: string }>();
+  const editable = canEdit(useProjectRole());
 
   const [samples, setSamples] = useState<SampleRecord[]>([]);
   const [links, setLinks] = useState<SampleProjectLink[]>([]);
@@ -66,7 +68,7 @@ export default function ProjectSamplesPage() {
 
   const load = useCallback(() => {
     Promise.all([
-      fetch("/api/samples").then((res) => res.json()),
+      fetch(`/api/projects/${projectId}/samples`).then((res) => res.json()),
       fetch("/api/projects").then((res) => res.json()),
       fetch(`/api/projects/${projectId}/marker-styles`).then((res) => res.json()),
     ])
@@ -349,7 +351,7 @@ export default function ProjectSamplesPage() {
             Export CSV
           </Button>
           <FieldPickerButton selected={selected} onToggle={toggle} />
-          {editMode && (
+          {editable && editMode && (
             <ManageSampleColumnsDialog
               columns={customColumns}
               onSaved={reloadCustomColumns}
@@ -360,7 +362,7 @@ export default function ProjectSamplesPage() {
               }
             />
           )}
-          {!editMode && (
+          {editable && !editMode && (
             <Button
               variant="outline"
               size="sm"
@@ -389,44 +391,48 @@ export default function ProjectSamplesPage() {
         extraRowAction={{ label: "Remove from project", onSelect: (s) => handleRemove(s.id) }}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Add from the main database</CardTitle>
-          <CardDescription>
-            Search for samples already in the database and link them to this project.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          {linkError && <p className="text-sm text-destructive">{linkError}</p>}
-          <SamplePicker
-            selectedIds={addSelection}
-            onChange={setAddSelection}
-            excludeIds={linkedSampleIds}
-          />
-        </CardContent>
-        <CardFooter>
-          <Button onClick={handleLinkSelected} disabled={addSelection.size === 0 || linking}>
-            {linking ? "Linking..." : `Link ${addSelection.size} sample(s)`}
-          </Button>
-        </CardFooter>
-      </Card>
+      {editable && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add from the main database</CardTitle>
+            <CardDescription>
+              Search for samples already in the database and link them to this project.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {linkError && <p className="text-sm text-destructive">{linkError}</p>}
+            <SamplePicker
+              selectedIds={addSelection}
+              onChange={setAddSelection}
+              excludeIds={linkedSampleIds}
+            />
+          </CardContent>
+          <CardFooter>
+            <Button onClick={handleLinkSelected} disabled={addSelection.size === 0 || linking}>
+              {linking ? "Linking..." : `Link ${addSelection.size} sample(s)`}
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Add new samples</CardTitle>
-          <CardDescription>
-            Stage new samples here, then upload — linked to this project automatically.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AddSamplesPanel
-            fixedProjectId={projectId}
-            onUploaded={load}
-            customColumns={customColumns}
-            onCustomColumnAdded={addColumnLocally}
-          />
-        </CardContent>
-      </Card>
+      {editable && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add new samples</CardTitle>
+            <CardDescription>
+              Stage new samples here, then upload — linked to this project automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AddSamplesPanel
+              fixedProjectId={projectId}
+              onUploaded={load}
+              customColumns={customColumns}
+              onCustomColumnAdded={addColumnLocally}
+            />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

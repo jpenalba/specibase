@@ -13,6 +13,8 @@ import {
   listBioSteps,
   updateBioWorkflow,
 } from "@/lib/bio-workflows-store";
+import { requireUser } from "@/lib/require-user";
+import { requireEntityProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 const STATUSES: BioWorkflowStatus[] = ["in_progress", "completed"];
@@ -22,11 +24,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
-    const workflow = await getBioWorkflow(id);
-    if (!workflow) {
-      return NextResponse.json({ errors: ["Workflow not found"] }, { status: 404 });
-    }
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getBioWorkflow(id), "viewer");
+    if ("response" in wfAuth) return wfAuth.response;
+    const workflow = wfAuth.entity;
+
     const [steps, links, entries, customColumns, customValues, detailColumns, detailRows, detailValues] =
       await Promise.all([
         listBioSteps(id),
@@ -59,7 +63,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getBioWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const body = await request.json();
 
     let name: string | undefined;
@@ -91,7 +100,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getBioWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     await deleteBioWorkflow(id);
     return NextResponse.json({ ok: true });
   } catch (error) {

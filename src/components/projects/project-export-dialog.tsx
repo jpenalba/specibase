@@ -259,7 +259,7 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
   // unmounts it — nothing about it is ever visible to the user.
   async function captureSampleMap(): Promise<CapturedMapImage | null> {
     const [samplesData, projectsData, markerStylesData] = await Promise.all([
-      fetch("/api/samples").then((res) => res.json()),
+      fetch(`/api/projects/${projectId}/samples`).then((res) => res.json()),
       fetch("/api/projects").then((res) => res.json()),
       fetch(`/api/projects/${projectId}/marker-styles`).then((res) => res.json()),
     ]);
@@ -452,13 +452,8 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
           y += 20;
         }
 
-        const samplesData = await fetch("/api/samples").then((res) => res.json());
-        const linkedIds = new Set(
-          ((projectsData.links ?? []) as SampleProjectLink[])
-            .filter((l) => l.project_id === projectId)
-            .map((l) => l.sample_id)
-        );
-        const tableSamples = ((samplesData.samples ?? []) as SampleRecord[]).filter((s) => linkedIds.has(s.id));
+        const samplesData = await fetch(`/api/projects/${projectId}/samples`).then((res) => res.json());
+        const tableSamples = (samplesData.samples ?? []) as SampleRecord[];
         const columns = getVisibleColumns(DEFAULT_OPTIONAL_KEYS);
         const { head, body } = samplesToAutoTableRows(tableSamples, columns);
         autoTable(doc, {
@@ -476,7 +471,7 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
         { title: "Bioinformatic workflow", apiBase: "/api/bio-workflows", choices: bioWorkflows },
       ];
 
-      const allSamplesData = await fetch("/api/samples").then((res) => res.json());
+      const allSamplesData = await fetch(`/api/projects/${projectId}/samples`).then((res) => res.json());
       const allSamples = (allSamplesData.samples ?? []) as SampleRecord[];
 
       for (const section of workflowSections) {

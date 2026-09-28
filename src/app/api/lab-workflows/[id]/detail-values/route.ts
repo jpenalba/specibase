@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DetailValueUpsertInput, upsertDetailValues } from "@/lib/lab-workflows-store";
+import { DetailValueUpsertInput, getWorkflow, upsertDetailValues } from "@/lib/lab-workflows-store";
+import { requireUser } from "@/lib/require-user";
+import { requireEntityProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 function parseValues(body: unknown): DetailValueUpsertInput[] | { error: string } {
@@ -20,8 +22,17 @@ function parseValues(body: unknown): DetailValueUpsertInput[] | { error: string 
 }
 
 // Bulk upsert, same shape as /api/lab-workflows/[id]/custom-values.
-export async function PATCH(request: NextRequest) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const body = await request.json();
     const values = parseValues(body?.values);
     if ("error" in values) {

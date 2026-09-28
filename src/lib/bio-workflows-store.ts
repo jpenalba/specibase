@@ -71,6 +71,26 @@ export async function listAllBioWorkflows(): Promise<BioWorkflow[]> {
   return (data ?? []) as BioWorkflow[];
 }
 
+// Same as listAllBioWorkflows, but scoped to projects `userId` is a
+// member of — see lab-workflows-store.ts's listWorkflowsForUser.
+export async function listBioWorkflowsForUser(userId: string): Promise<BioWorkflow[]> {
+  const { data: memberships, error: membershipError } = await getSupabase()
+    .from("project_members")
+    .select("project_id")
+    .eq("user_id", userId);
+  if (membershipError) throw new Error(membershipError.message);
+  const projectIds = (memberships ?? []).map((m) => m.project_id as string);
+  if (projectIds.length === 0) return [];
+
+  const { data, error } = await getSupabase()
+    .from(WORKFLOWS_TABLE)
+    .select("*")
+    .in("project_id", projectIds)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BioWorkflow[];
+}
+
 export async function getBioWorkflow(id: string): Promise<BioWorkflow | null> {
   const { data, error } = await getSupabase()
     .from(WORKFLOWS_TABLE)

@@ -149,7 +149,11 @@ create index if not exists sample_custom_values_sample_id_idx on sample_custom_v
 
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique,
+  -- Not globally unique — see project_members below. Two different
+  -- accounts' projects are private from each other by default, so two
+  -- strangers both calling a project "Pilot study" is normal; uniqueness
+  -- is enforced app-side instead, scoped to what the creator can see.
+  name text not null,
   created_at timestamptz not null default now(),
 
   description text,
@@ -176,6 +180,20 @@ create table if not exists projects (
   -- instead of always showing them — see 0029_marker_hide_no_value.sql.
   marker_hide_no_value boolean not null default false
 );
+
+-- Phase 3 of AUTH_AND_PERMISSIONS_PLAN.md: every project gets a membership
+-- list (Viewer/Editor/Owner) — see supabase/migrations/0036_project_members.sql.
+-- A project is visible only to its members; creating one auto-adds the
+-- creator as an Owner (src/lib/projects-store.ts).
+create table if not exists project_members (
+  project_id uuid not null references projects (id) on delete cascade,
+  user_id uuid not null references profiles (id) on delete cascade,
+  role text not null check (role in ('viewer', 'editor', 'owner')),
+  created_at timestamptz not null default now(),
+  primary key (project_id, user_id)
+);
+
+create index if not exists project_members_user_id_idx on project_members (user_id);
 
 create table if not exists sample_projects (
   sample_id uuid not null references samples (id) on delete cascade,
@@ -669,6 +687,7 @@ alter table samples enable row level security;
 alter table sample_custom_columns enable row level security;
 alter table sample_custom_values enable row level security;
 alter table projects enable row level security;
+alter table project_members enable row level security;
 alter table sample_projects enable row level security;
 alter table collections enable row level security;
 alter table collection_samples enable row level security;

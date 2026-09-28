@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteReference, updateReference } from "@/lib/project-references-store";
+import { requireUser } from "@/lib/require-user";
+import { requireProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ refId: string }> }
+  { params }: { params: Promise<{ id: string; refId: string }> }
 ) {
   try {
-    const { refId } = await params;
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id, refId } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const body = await request.json();
     const citation = typeof body?.citation === "string" ? body.citation.trim() : "";
     if (!citation) {
@@ -22,10 +29,15 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ refId: string }> }
+  { params }: { params: Promise<{ id: string; refId: string }> }
 ) {
   try {
-    const { refId } = await params;
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
+    const { id, refId } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+
     await deleteReference(refId);
     return NextResponse.json({ ok: true });
   } catch (error) {

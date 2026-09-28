@@ -127,6 +127,25 @@ export async function getEmailForUsername(username: string): Promise<string | nu
   return (data?.email as string | undefined) ?? null;
 }
 
+// Looks an identifier up as either a username or an email — used by the
+// "Add member" flow (project-members-store.ts), where whoever's adding a
+// collaborator might type either. Email match is exact (case-sensitive,
+// same as auth.users itself); username match is case-insensitive, same as
+// getEmailForUsername above.
+export async function findProfileByIdentifier(identifier: string): Promise<Profile | null> {
+  const trimmed = identifier.trim();
+  if (!trimmed) return null;
+  // Two separate queries rather than a single `.or(...)` filter string —
+  // avoids building a PostgREST filter expression out of raw user input.
+  const byEmail = await getSupabase().from(TABLE).select("*").eq("email", trimmed).maybeSingle();
+  if (byEmail.error) throw new Error(byEmail.error.message);
+  if (byEmail.data) return byEmail.data as Profile;
+
+  const byUsername = await getSupabase().from(TABLE).select("*").ilike("username", trimmed).maybeSingle();
+  if (byUsername.error) throw new Error(byUsername.error.message);
+  return (byUsername.data as Profile) ?? null;
+}
+
 // "Dr. Jane Smith", "Jane Smith" (no title), or null if neither name is
 // set yet — callers fall back to username or email themselves in that case.
 export function formatDisplayName(profile: {

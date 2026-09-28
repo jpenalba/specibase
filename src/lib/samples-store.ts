@@ -46,6 +46,48 @@ export async function readSamples(ownerId: string): Promise<SampleRecord[]> {
   return attachCustomValues(samples, await listAllCustomValues());
 }
 
+// Which of `sampleIds` the given account actually owns — used as a
+// defense-in-depth check before linking samples into a project (an Editor
+// can link one of their own existing samples in; the picker offering them
+// already only shows their own, per Phase 3 route wiring, but a crafted
+// request shouldn't be able to link someone else's).
+export async function filterOwnedSampleIds(ownerId: string, sampleIds: string[]): Promise<string[]> {
+  if (sampleIds.length === 0) return [];
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select("id")
+    .eq("owner_id", ownerId)
+    .in("id", sampleIds);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => row.id as string);
+}
+
+// Every sample linked to a project, regardless of who owns it — unlike
+// readSamples above, not scoped to one account. A project's Samples tab
+// shows everyone's contributions to it (see AUTH_AND_PERMISSIONS_PLAN.md:
+// "linked into Project X via sample_projects so everyone on that project
+// can see and edit it there"), gated by project role rather than
+// ownership — the caller checks that before calling this.
+export async function readProjectSamples(projectId: string): Promise<SampleRecord[]> {
+  const { data: links, error: linksError } = await getSupabase()
+    .from("sample_projects")
+    .select("sample_id")
+    .eq("project_id", projectId);
+  if (linksError) throw new Error(linksError.message);
+  const sampleIds = (links ?? []).map((l) => l.sample_id as string);
+  if (sampleIds.length === 0) return [];
+
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select("*")
+    .in("id", sampleIds)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  const samples = (data ?? []) as SampleRecord[];
+  return attachCustomValues(samples, await listAllCustomValues());
+}
+
 // Merges "Other: specify" custom field values onto their sample under
 // `custom:<column id>` — see sample-custom-columns-store.ts — so every
 // caller (the table, CSV export, marker style) can read one via plain

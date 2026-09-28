@@ -64,6 +64,29 @@ export async function listAllWorkflows(): Promise<LabWorkflow[]> {
   return (data ?? []) as LabWorkflow[];
 }
 
+// Same as listAllWorkflows, but scoped to projects `userId` is a member
+// of — projects are private to their members now (see
+// supabase/migrations/0036_project_members.sql), so an unscoped list
+// would otherwise leak workflow names/counts for projects the caller
+// can't see.
+export async function listWorkflowsForUser(userId: string): Promise<LabWorkflow[]> {
+  const { data: memberships, error: membershipError } = await getSupabase()
+    .from("project_members")
+    .select("project_id")
+    .eq("user_id", userId);
+  if (membershipError) throw new Error(membershipError.message);
+  const projectIds = (memberships ?? []).map((m) => m.project_id as string);
+  if (projectIds.length === 0) return [];
+
+  const { data, error } = await getSupabase()
+    .from(WORKFLOWS_TABLE)
+    .select("*")
+    .in("project_id", projectIds)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LabWorkflow[];
+}
+
 export async function getWorkflow(id: string): Promise<LabWorkflow | null> {
   const { data, error } = await getSupabase()
     .from(WORKFLOWS_TABLE)

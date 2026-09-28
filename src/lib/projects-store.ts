@@ -1,10 +1,12 @@
 import { getSupabase } from "./supabase";
 import { FocalGroupCategory } from "./focal-group";
 import { LayerShape } from "./layer-shapes";
+import { addMember } from "./project-members-store";
 
 const PROJECTS_TABLE = "projects";
 const LINK_TABLE = "sample_projects";
 const PROTOCOL_LINK_TABLE = "protocol_projects";
+const MEMBERS_TABLE = "project_members";
 
 export type ProjectStatus = "in_progress" | "completed";
 
@@ -62,17 +64,44 @@ export type NewProjectInput = {
 
 export type UpdateProjectInput = Partial<NewProjectInput>;
 
-// Postgres's unique_violation code — used to turn a duplicate project name
-// into a message worth showing someone, instead of a raw constraint error.
-const UNIQUE_VIOLATION = "23505";
+// Project names aren't globally unique any more (see
+// supabase/migrations/0036_project_members.sql) — two different accounts
+// can reuse the same name freely. What's still worth blocking is *one*
+// account ending up with two same-named projects of their own, since
+// that's confusing regardless of who else can also see either one. Scoped
+// to every project `userId` is currently a member of, not just ones they
+// own, since a same-named project shared with them would be just as
+// confusing to pick between.
+async function assertUniqueNameForUser(
+  userId: string,
+  name: string,
+  excludeProjectId?: string
+): Promise<void> {
+  const { data, error } = await getSupabase()
+    .from(MEMBERS_TABLE)
+    .select("project_id, projects!inner(name)")
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  const collides = (data ?? []).some((row) => {
+    if (excludeProjectId && row.project_id === excludeProjectId) return false;
+    const project = row.projects as unknown as { name: string };
+    return project.name === name;
+  });
+  if (collides) {
+    throw new Error(`A project named "${name}" already exists.`);
+  }
+}
 
 // Unlike getOrCreateProject() below, this always inserts a new row and
 // fails if the name is taken — right for the dedicated projects page,
 // where someone is deliberately filling out a full project profile and
 // silently handing back a different, existing project (dropping every
 // field they just typed) would be a worse surprise than an error.
-export async function createProject(input: NewProjectInput): Promise<Project> {
+// Creating a project makes `creatorId` its first Owner.
+export async function createProject(input: NewProjectInput, creatorId: string): Promise<Project> {
   const name = input.name.trim();
+  await assertUniqueNameForUser(creatorId, name);
+
   const { data, error } = await getSupabase()
     .from(PROJECTS_TABLE)
     .insert({
@@ -94,21 +123,26 @@ export async function createProject(input: NewProjectInput): Promise<Project> {
     })
     .select()
     .single();
-  if (error) {
-    if (error.code === UNIQUE_VIOLATION) {
-      throw new Error(`A project named "${name}" already exists.`);
-    }
-    throw new Error(error.message);
-  }
-  return data as Project;
+  if (error) throw new Error(error.message);
+
+  const project = data as Project;
+  await addMember(project.id, creatorId, "owner");
+  return project;
 }
 
 // Partial update — only fields present in `input` are changed. Used by the
 // projects page's edit dialog, which always submits the full form, but
 // written to tolerate a partial payload in case that ever changes.
-export async function updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
+export async function updateProject(
+  id: string,
+  input: UpdateProjectInput,
+  actingUserId: string
+): Promise<Project> {
   const patch: Record<string, unknown> = {};
-  if (input.name !== undefined) patch.name = input.name.trim();
+  if (input.name !== undefined) {
+    patch.name = input.name.trim();
+    await assertUniqueNameForUser(actingUserId, patch.name as string, id);
+  }
   if (input.description !== undefined) patch.description = input.description.trim() || null;
   if (input.start_date !== undefined) patch.start_date = input.start_date || null;
   if (input.owner !== undefined) patch.owner = input.owner.trim() || null;
@@ -130,40 +164,39 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
     .eq("id", id)
     .select()
     .single();
-  if (error) {
-    if (error.code === UNIQUE_VIOLATION) {
-      throw new Error(`A project named "${patch.name}" already exists.`);
-    }
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
   return data as Project;
 }
 
-export async function listProjects(): Promise<Project[]> {
+// Every project `userId` is a member of, regardless of role — replaces the
+// old unscoped listProjects() now that projects are private to their
+// members (see supabase/migrations/0036_project_members.sql).
+export async function listProjectsForUser(userId: string): Promise<Project[]> {
   const { data, error } = await getSupabase()
-    .from(PROJECTS_TABLE)
-    .select("*")
-    .order("name", { ascending: true });
+    .from(MEMBERS_TABLE)
+    .select("projects(*)")
+    .eq("user_id", userId);
   if (error) throw new Error(error.message);
-  return (data ?? []) as Project[];
+  const projects = (data ?? []).map((row) => row.projects as unknown as Project);
+  projects.sort((a, b) => a.name.localeCompare(b.name));
+  return projects;
 }
 
-// Creating a project with a name that already exists just returns the
-// existing one, rather than erroring — typing an existing project's name
-// to add more samples to it is a normal thing to do here, not a conflict.
-// Reports whether it actually created a new row, so callers (the activity
-// log) only announce a creation when one actually happened.
+// Creating a project with a name that already exists (among `creatorId`'s
+// own projects — never a stranger's, now that projects are private to
+// their members) just returns the existing one, rather than erroring —
+// typing an existing project's name to add more samples to it is a normal
+// thing to do here, not a conflict. Reports whether it actually created a
+// new row, so callers (the activity log) only announce a creation when
+// one actually happened.
 export async function getOrCreateProject(
-  name: string
+  name: string,
+  creatorId: string
 ): Promise<{ project: Project; created: boolean }> {
   const trimmed = name.trim();
-  const { data: existing, error: lookupError } = await getSupabase()
-    .from(PROJECTS_TABLE)
-    .select("*")
-    .eq("name", trimmed)
-    .maybeSingle();
-  if (lookupError) throw new Error(lookupError.message);
-  if (existing) return { project: existing as Project, created: false };
+  const mine = await listProjectsForUser(creatorId);
+  const existing = mine.find((p) => p.name === trimmed);
+  if (existing) return { project: existing, created: false };
 
   const { data, error } = await getSupabase()
     .from(PROJECTS_TABLE)
@@ -171,7 +204,9 @@ export async function getOrCreateProject(
     .select()
     .single();
   if (error) throw new Error(error.message);
-  return { project: data as Project, created: true };
+  const project = data as Project;
+  await addMember(project.id, creatorId, "owner");
+  return { project, created: true };
 }
 
 export type SampleProjectLink = { sample_id: string; project_id: string };

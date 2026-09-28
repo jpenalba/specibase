@@ -7,6 +7,8 @@ import {
 import { markerStyleFieldByKey } from "@/lib/fields";
 import { customColumnIdFromKey } from "@/lib/sample-custom-columns-store";
 import { LAYER_SHAPES, LayerShape } from "@/lib/layer-shapes";
+import { requireUser } from "@/lib/require-user";
+import { requireProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 
 export async function GET(
@@ -14,7 +16,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "viewer");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const styles = await listMarkerStyles(id);
     return NextResponse.json({ styles });
   } catch (error) {
@@ -31,7 +38,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const body = await request.json();
 
     const fieldKey = typeof body?.field_key === "string" ? body.field_key : "";
@@ -63,7 +75,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const roleAuth = await requireProjectRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+
     const body = await request.json();
     const fieldKey = typeof body?.field_key === "string" ? body.field_key : "";
     const fieldValue = typeof body?.field_value === "string" ? body.field_value : "";

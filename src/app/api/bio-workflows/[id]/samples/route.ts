@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { enrollBioSamples, unenrollBioSamples } from "@/lib/bio-workflows-store";
+import { enrollBioSamples, getBioWorkflow, unenrollBioSamples } from "@/lib/bio-workflows-store";
+import { requireUser } from "@/lib/require-user";
+import { requireEntityProjectRole } from "@/lib/require-project-role";
 import { apiError } from "@/lib/api-error";
 import { parseSampleIds } from "../../parse-body";
 
@@ -8,7 +10,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getBioWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const sampleIds = parseSampleIds(await request.json());
     if (!sampleIds) {
       return NextResponse.json({ errors: ["sampleIds must be an array of strings"] }, { status: 400 });
@@ -25,7 +32,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const wfAuth = await requireEntityProjectRole(auth.user.id, () => getBioWorkflow(id), "editor");
+    if ("response" in wfAuth) return wfAuth.response;
+
     const sampleIds = parseSampleIds(await request.json());
     if (!sampleIds) {
       return NextResponse.json({ errors: ["sampleIds must be an array of strings"] }, { status: 400 });
