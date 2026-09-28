@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROFILE_TITLES, Profile, ProfileTitle } from "@/lib/profile-store";
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@/lib/image-types";
@@ -63,17 +63,29 @@ export function ProfileDialog({
   const [submitting, setSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  function update<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleOpenChange(next: boolean) {
-    onOpenChange(next);
-    if (next) {
+  // Re-fills the form from `profile` right as the dialog opens — not just
+  // on first mount. This dialog has no DialogTrigger of its own (it's
+  // opened by the account dropdown flipping `open` from outside), and
+  // Radix's Dialog only calls onOpenChange for interactions it intercepts
+  // itself (Escape, overlay click, its own close button) — never for an
+  // externally-controlled `open` prop change. Without this effect, the
+  // form's initial (often still-loading, so empty) snapshot of `profile`
+  // would stick around forever after the first open. Gated on the
+  // false→true edge specifically, via prevOpenRef, so a profile refresh
+  // that happens *while* already open (e.g. right after a photo upload)
+  // doesn't stomp on whatever the person is mid-typing.
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
       setValues(formFromProfile(profile));
       setAvatarUrl(profile?.avatar_url ?? null);
       setErrors([]);
     }
+    prevOpenRef.current = open;
+  }, [open, profile]);
+
+  function update<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setValues((prev) => ({ ...prev, [key]: value }));
   }
 
   // Uploaded immediately on selection, separately from the rest of the
@@ -151,7 +163,7 @@ export function ProfileDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitleHeading>Edit profile</DialogTitleHeading>
