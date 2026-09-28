@@ -12,15 +12,18 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { ProfileDialog } from "./profile-dialog";
+import { InviteUserDialog } from "./invite-user-dialog";
+import { UserSettingsDialog } from "./user-settings-dialog";
 import { Avatar } from "./avatar";
 
 // The account dropdown in the nav bar's top right — a Profile section
-// (summary + an edit entry point) first, other account-level actions
-// (just Sign out for now) below. More sections land here as later auth
-// phases add things like the personal activity-log toggle.
+// (summary + an edit entry point) first, then other account-level actions
+// (inviting someone else to Specibase, user settings, sign out) below.
 export function AccountMenu({ user }: { user: CurrentUser }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const load = useCallback(() => {
     fetch("/api/profile")
@@ -80,6 +83,9 @@ export function AccountMenu({ user }: { user: CurrentUser }) {
           )}
           <DropdownMenuItem onSelect={() => setDialogOpen(true)}>Edit profile</DropdownMenuItem>
           <div className="my-1 h-px bg-border" />
+          <DropdownMenuItem onSelect={() => setInviteOpen(true)}>Invite other users</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>User settings</DropdownMenuItem>
+          <div className="my-1 h-px bg-border" />
           <DropdownMenuItem variant="destructive" onSelect={signOut}>
             Sign out
           </DropdownMenuItem>
@@ -91,6 +97,8 @@ export function AccountMenu({ user }: { user: CurrentUser }) {
         onOpenChange={setDialogOpen}
         onSaved={load}
       />
+      <InviteUserDialog open={inviteOpen} onOpenChange={setInviteOpen} />
+      <UserSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} email={user.email} />
     </>
   );
 }
