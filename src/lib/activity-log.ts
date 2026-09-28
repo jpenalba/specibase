@@ -20,6 +20,7 @@ export type ActivityLogEntry = {
   summary: string;
   undo_data: UndoData | null;
   undone_at: string | null;
+  project_id: string | null;
 };
 
 // Fails open (treated as enabled) if the settings row is missing or the
@@ -50,18 +51,28 @@ export async function setActivityLoggingEnabled(enabled: boolean): Promise<void>
 // (or a not-yet-migrated database) must never surface as if the action
 // itself failed. undoData is omitted for anything that isn't reversible
 // (most entries — a project rename, say) — its presence is what puts an
-// "Undo" button on this entry in the Logs page.
+// "Undo" button on this entry in the Logs page. projectId is omitted for
+// anything that isn't clearly scoped to one project (most entries today —
+// a sample edit from the shared Database, say); its presence is what
+// makes an entry show up in that project's own Logs tab.
 export async function logActivity(
   entityType: string,
   action: string,
   summary: string,
-  undoData?: UndoData
+  undoData?: UndoData,
+  projectId?: string
 ): Promise<void> {
   try {
     if (!(await isActivityLoggingEnabled())) return;
     await getSupabase()
       .from(LOG_TABLE)
-      .insert({ entity_type: entityType, action, summary, undo_data: undoData ?? null });
+      .insert({
+        entity_type: entityType,
+        action,
+        summary,
+        undo_data: undoData ?? null,
+        project_id: projectId ?? null,
+      });
   } catch {
     // Swallow — see above.
   }
@@ -71,6 +82,20 @@ export async function listActivity(limit = 300): Promise<ActivityLogEntry[]> {
   const { data, error } = await getSupabase()
     .from(LOG_TABLE)
     .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ActivityLogEntry[];
+}
+
+export async function listActivityForProject(
+  projectId: string,
+  limit = 300
+): Promise<ActivityLogEntry[]> {
+  const { data, error } = await getSupabase()
+    .from(LOG_TABLE)
+    .select("*")
+    .eq("project_id", projectId)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);

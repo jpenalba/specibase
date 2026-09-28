@@ -530,6 +530,15 @@ create table if not exists protocols (
   content text
 );
 
+-- Lets a protocol be attached to one or more projects, same shape as
+-- sample_projects for samples.
+create table if not exists protocol_projects (
+  protocol_id uuid not null references protocols (id) on delete cascade,
+  project_id uuid not null references projects (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (protocol_id, project_id)
+);
+
 -- Lightweight activity feed — one row per meaningful change, shown on
 -- /logs. See supabase/migrations/0024_activity_log.sql for the fuller
 -- reasoning (no entity_id/diff, just a precomputed summary line).
@@ -544,7 +553,15 @@ create table if not exists activity_log (
   -- Undo support — see supabase/migrations/0025_undo.sql. null undo_data
   -- means this entry isn't undoable; undone_at marks one that already was.
   undo_data jsonb,
-  undone_at timestamptz
+  undone_at timestamptz,
+
+  -- Tags an entry with the project it happened in, so a project's own
+  -- Logs tab can show just its slice of the feed. Null means the action
+  -- wasn't scoped to one project (most entries today — a sample edit from
+  -- the shared Database, say). set null on delete rather than cascade: a
+  -- deleted project's log entries stay in the global feed instead of
+  -- disappearing with it.
+  project_id uuid references projects (id) on delete set null
 );
 
 -- Single-row (id always 1) table of app-wide settings — no per-user auth,
@@ -600,6 +617,7 @@ alter table project_lab_note_images enable row level security;
 alter table project_bio_note_images enable row level security;
 alter table project_marker_styles enable row level security;
 alter table protocols enable row level security;
+alter table protocol_projects enable row level security;
 alter table activity_log enable row level security;
 alter table app_settings enable row level security;
 

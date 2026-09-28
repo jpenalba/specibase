@@ -25,7 +25,13 @@ export async function PATCH(
       return NextResponse.json({ errors: [fields.error] }, { status: 400 });
     }
     const project = await updateProject(id, { name, ...fields });
-    await logActivity("project", "updated", `Updated project "${project.name}"`);
+    await logActivity(
+      "project",
+      "updated",
+      `Updated project "${project.name}"`,
+      undefined,
+      project.id
+    );
     return NextResponse.json({ project });
   } catch (error) {
     return apiError(error);

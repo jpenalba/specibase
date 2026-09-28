@@ -68,10 +68,15 @@ export function ProtocolDialog({
   protocol,
   onSaved,
   trigger,
+  afterCreate,
 }: {
   protocol?: Protocol;
   onSaved: () => void;
   trigger: React.ReactNode;
+  // Called with the newly created protocol right after a successful POST
+  // (create only) — e.g. so a project's Protocols tab can attach it to
+  // that project immediately, before the "built" case's redirect fires.
+  afterCreate?: (protocol: Protocol) => void;
 }) {
   const isEdit = Boolean(protocol);
   const router = useRouter();
@@ -166,6 +171,7 @@ export function ProtocolDialog({
         return;
       }
       setOpen(false);
+      if (!isEdit) afterCreate?.(data.protocol as Protocol);
       if (!isEdit && values.sourceType === "built") {
         // Straight into the builder page the user just asked for, rather
         // than back to the list — there's nothing to see there yet for a

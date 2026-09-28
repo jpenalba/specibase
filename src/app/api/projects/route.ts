@@ -4,6 +4,7 @@ import {
   getOrCreateProject,
   listProjects,
   listSampleProjectLinks,
+  listProtocolProjectLinks,
 } from "@/lib/projects-store";
 import { logActivity } from "@/lib/activity-log";
 import { apiError } from "@/lib/api-error";
@@ -11,11 +12,12 @@ import { parseProjectFields } from "./parse-body";
 
 export async function GET() {
   try {
-    const [projects, links] = await Promise.all([
+    const [projects, links, protocolLinks] = await Promise.all([
       listProjects(),
       listSampleProjectLinks(),
+      listProtocolProjectLinks(),
     ]);
-    return NextResponse.json({ projects, links });
+    return NextResponse.json({ projects, links, protocolLinks });
   } catch (error) {
     return apiError(error);
   }
@@ -39,7 +41,13 @@ export async function POST(request: NextRequest) {
     if (!hasDetails) {
       const { project, created } = await getOrCreateProject(name);
       if (created) {
-        await logActivity("project", "created", `Created project "${project.name}"`);
+        await logActivity(
+          "project",
+          "created",
+          `Created project "${project.name}"`,
+          undefined,
+          project.id
+        );
       }
       return NextResponse.json({ project }, { status: 201 });
     }
@@ -49,7 +57,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ errors: [fields.error] }, { status: 400 });
     }
     const project = await createProject({ name, ...fields });
-    await logActivity("project", "created", `Created project "${project.name}"`);
+    await logActivity(
+      "project",
+      "created",
+      `Created project "${project.name}"`,
+      undefined,
+      project.id
+    );
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
     return apiError(error);

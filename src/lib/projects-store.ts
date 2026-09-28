@@ -4,6 +4,7 @@ import { LayerShape } from "./layer-shapes";
 
 const PROJECTS_TABLE = "projects";
 const LINK_TABLE = "sample_projects";
+const PROTOCOL_LINK_TABLE = "protocol_projects";
 
 export type ProjectStatus = "in_progress" | "completed";
 
@@ -210,5 +211,45 @@ export async function unlinkSamplesFromProject(
     .delete()
     .eq("project_id", projectId)
     .in("sample_id", sampleIds);
+  if (error) throw new Error(error.message);
+}
+
+export type ProtocolProjectLink = { protocol_id: string; project_id: string };
+
+// Every protocol/project pairing — same shape as listSampleProjectLinks,
+// used to work out which protocols are attached to which project.
+export async function listProtocolProjectLinks(): Promise<ProtocolProjectLink[]> {
+  const { data, error } = await getSupabase().from(PROTOCOL_LINK_TABLE).select("*");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ProtocolProjectLink[];
+}
+
+// Links are upserted (ignore duplicates) since a protocol can already be
+// attached to the project.
+export async function linkProtocolsToProject(
+  protocolIds: string[],
+  projectId: string
+): Promise<void> {
+  if (protocolIds.length === 0) return;
+  const rows = protocolIds.map((protocolId) => ({
+    protocol_id: protocolId,
+    project_id: projectId,
+  }));
+  const { error } = await getSupabase()
+    .from(PROTOCOL_LINK_TABLE)
+    .upsert(rows, { onConflict: "protocol_id,project_id", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+}
+
+export async function unlinkProtocolsFromProject(
+  protocolIds: string[],
+  projectId: string
+): Promise<void> {
+  if (protocolIds.length === 0) return;
+  const { error } = await getSupabase()
+    .from(PROTOCOL_LINK_TABLE)
+    .delete()
+    .eq("project_id", projectId)
+    .in("protocol_id", protocolIds);
   if (error) throw new Error(error.message);
 }
