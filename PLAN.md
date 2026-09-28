@@ -64,9 +64,7 @@ The original roadmap's phases don't map cleanly onto what shipped, so here's eve
 
 | # | Gap | Verdict | Why |
 |---|---|---|---|
-| 1 | CSV import: flag a duplicate `primary_identifier` as a possible update, instead of hard-blocking the whole batch | **Worth doing** | Cheap — it's a change to the existing staging/validation logic, not new architecture — and it's a real, recurring friction point given how CSV-first this app is. |
 | 2 | Sample attachments (photos, chromatograms) | **Worth doing** | The image-upload-to-a-public-bucket pattern already exists twice (project background images, protocol PDFs); a `sample-attachments` bucket + a small linking table is the same shape again. High value for a tissue/specimen tracker. |
-| 3 | Linked external accessions (NCBI SRA/BioSample IDs) | **Worth doing** | Just one or two more optional text columns via the existing `OPTIONAL_FIELDS` mechanism — no new architecture at all. |
 | 4 | Per-sample timeline view (every Lab + Bioinformatic workflow stage, in order, for one sample) | **Worth considering** | Real value for tracing one sample's history, and nothing blocks it — but it means a new cross-workflow aggregation query (entries + detail values across every workflow a sample appears in), not a trivial add. |
 | 5 | Multi-select + bulk edit on sample tables | **Lower priority** | Most of the practical need is already covered by the CSV export → edit → re-import round trip, plus the workflow grids' own fill-handle and Editing mode. A dedicated bulk-edit UI would be a convenience layer on existing capability, not a new one. |
 | 7 | `SampleIdentifier` as a normalized many-to-many table (arbitrary repeatable identifier types) | **Skip as originally scoped** | Cuts against the app's whole flat-column philosophy. If more than the existing `additional_number` field is ever needed, add named columns the same way `genus`/`taxon_order` were added (via `OPTIONAL_FIELDS`) — simpler and consistent with everything else, at the cost of not being fully open-ended. |
@@ -74,14 +72,14 @@ The original roadmap's phases don't map cleanly onto what shipped, so here's eve
 | 9 | Gap analysis (regions with GBIF records but no nearby lab sample) | **Skip unless it's a concrete deliverable** | This needs actual cached occurrence points and a spatial join, i.e. reversing the live-tile decision above and likely adding PostGIS — a real architecture change, not an incremental feature. Worth it only if gap analysis becomes something the lab actually needs to produce, not a "nice to have." |
 | 10 | PostGIS | **Skip** | Nothing today needs a server-side spatial query. Only relevant if gap analysis (#9) gets greenlit. |
 | 11 | Notifications (e.g. "sample stuck at extracted for 90+ days") | **Skip** | There's no notification delivery mechanism (email/push) anywhere in the app, and nothing else has asked for one. This needs that infrastructure decided first, independent of workflow tracking itself. |
-| 13 | Public/read-only project view (e.g. for a paper's data-availability statement) | **Worth pulling forward independently** | A single opaque share-token URL for one project is a self-contained feature — no accounts, roles, or membership model needed to build it. |
 | 14 | Publish back to GBIF as an occurrence dataset | **Skip** | Niche and speculative — nothing so far suggests this is actually needed. |
 
 Gaps #6 (Auth & per-user roles), #12 (per-project collaborator invites), and #15 (automatic whole-database archiving) have been dropped from consideration — not just deferred. Auth/roles was designed (see git history for `AUTH_AND_PERMISSIONS_PLAN.md`) but is no longer something this project wants to build; #12 was entirely dependent on it. Archiving was already effectively superseded by the narrower Undo feature that shipped instead (see `src/lib/activity-log.ts` and the Logs page) before its own design doc (`ARCHIVING_PLAN.md`) was written; both docs have been removed rather than kept as dead design references.
 
+Gaps #1 (CSV duplicate-ID flagging), #3 (linked external accessions), and #13 (public read-only share link) have also been dropped — not pursuing these either.
+
 ## Open questions (updated)
 
 - **Attachments scope**: if gap #2 gets built, is a flat "attachments" list per sample enough, or does it need categories (e.g. distinguish a specimen photo from a gel image from a chromatogram)? Note the Lab/Bio Notes image feature (title + optional sample tags + caption) already covers a meaningful chunk of this use case without a dedicated per-sample attachments list.
-- **Share-token scope** (gap #13): read-only for the whole project, or should some tabs (e.g. internal Lab Workflow notes) stay hidden even on a shared link?
 
 Everything else from the original "open questions" section (fixed `SampleIdentifier` types, `primary_identifier` format validation, starting `Method`/status vocabularies, day-one data migration) has since been settled by what actually shipped — `primary_identifier` is validated against `^[A-Za-z0-9_-]+$`, and both workflow types ship with editable preset step vocabularies rather than a fixed enum.
