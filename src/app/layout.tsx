@@ -4,6 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 import { NavBar } from "@/components/nav-bar";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
+import { getCurrentUser } from "@/lib/current-user";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,7 +21,13 @@ export const metadata: Metadata = {
   description: "Sample database for evolutionary biology field collections",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Best-effort — before NEXT_PUBLIC_SUPABASE_* is configured (see
+  // .env.example), this throws; the nav bar just shows as signed-out in
+  // that case, matching proxy.ts's own fail-open behavior. Once auth is
+  // set up, a real failure here is rare enough not to need its own UI.
+  const user = await getCurrentUser().catch(() => null);
+
   return (
     <html
       lang="en"
@@ -32,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
-        <NavBar />
+        <NavBar user={user} />
         {children}
       </body>
     </html>
