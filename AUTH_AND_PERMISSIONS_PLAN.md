@@ -1,6 +1,6 @@
 # Auth & per-project permissions — design plan
 
-This is a design doc, not a build in progress — nothing here is implemented yet. It exists to resolve the open questions below before writing any code, per the request that started it: a per-user activity log, and project sharing with different permission levels (viewing, editing, etc.).
+This started as a design doc and is now most of the way built. It exists to resolve the open questions below before writing any code, per the request that started it: a per-user activity log, and project sharing with different permission levels (viewing, editing, etc.). **Phases 1–3 are done** (real Supabase Auth login, private per-account Database/Collections/Protocols, and project membership/roles); phase 4 (per-user + per-project activity log attribution) is next.
 
 Related: [`PLAN.md`](./PLAN.md)'s open-gaps review calls this out as gap #6 (Auth & roles) and #12 (collaborator invites) — this doc is the detailed version of both. (A public read-only share link, once bundled in with this as gap #13, has since been dropped from the roadmap independently — nothing here depends on it, and phase 5 below still notes where it would slot in if that changes.)
 
@@ -117,16 +117,17 @@ So an editor's edit only shows up in a project's log when *both* switches are on
 
 ## Suggested build phases
 
-1. **Foundation**: Supabase Auth wiring, `profiles` table + creation trigger, `/login`, session middleware, nav bar shows the signed-in user + sign-out. Existing data gets backfilled to whichever account is created first. This is the phase that "turns on" requiring login at all; behavior is otherwise unchanged since there's only one account so far.
-2. **Personal data scoping**: `owner_id` on `samples`/`collections`/`protocols`; Database/Collections/Protocols/Logs views filtered to the signed-in account only, with the `requireOwnership` checks on their routes.
-3. **Project membership + roles**: `project_members` table, auto-Owner-on-create + multi-Owner support, an "Add member" dialog on each project, role-based UI (hide edit affordances from viewers), and `requireProjectRole` checks on every project-scoped route.
-4. **Per-user + per-project activity log**: `user_id`/`project_id` columns, the personal and per-project toggles, attribution in the UI, the project-scoped Logs view.
+1. **Foundation** — done. Supabase Auth wiring, `profiles` table + creation trigger, `/login`, session middleware, nav bar shows the signed-in user + sign-out. Also grew to cover the account dropdown's Profile section (title/name/institution/department/position/lab group), a profile photo, and username-or-email login.
+2. **Personal data scoping** — done. `owner_id` on `samples`/`collections`/`protocols`; Database/Collections/Protocols/Logs views filtered to the signed-in account only, with `requireOwnership`-style checks on their routes.
+3. **Project membership + roles** — done. `project_members` table (Viewer/Editor/Owner), auto-Owner-on-create + multi-Owner support, a Members dialog on each project (add by email/username, with a Supabase Auth invite for an unknown email; change roles; remove; leave), `requireProjectRole`/`requireEntityProjectRole` checks on every project-scoped route (the project itself, samples/protocols linking, lab/bio workflows, notes, references, marker styles, activity log), and `requireSampleAccess`/`requireProtocolAccess` so an Editor can work on a colleague's sample or protocol once it's linked into the shared project, not just their own. Project names are no longer globally unique — see the data model note below. Role-based UI hiding is thorough on the Samples/Protocols tabs; the other tabs still rely on the server-side checks as the actual enforcement.
+4. **Per-user + per-project activity log**: `user_id`/`project_id` columns, the personal and per-project toggles, attribution in the UI, the project-scoped Logs view. *(Partially predates this: `activity_log.project_id` and `.performed_by` — a denormalized name snapshot, not a `user_id` FK — already exist; the personal/per-project logging toggles described below are not yet built.)*
 5. **Later, optional**: public read-only share links per project (a single opaque token is enough on its own — doesn't need any of the above — see the note at the top of this doc about where that gap currently stands), RLS as defense-in-depth.
 
-Building incrementally on `main`, same as everything else so far — phase 1 is the only one that changes existing behavior (it requires logging in at all), and with a single account in use today that's a low-risk flip.
+Building incrementally on `main`, same as everything else so far.
 
-## Open questions to resolve before starting
+## Resolved questions
 
-- Sample/collection/protocol ownership when an Editor creates new data while working inside a shared project — see the proposed default above under "Account model."
-- Can an Owner demote or remove another Owner (only when one would remain), or is Owner status permanent? Can a Viewer/Editor leave a project on their own?
-- Are Protocols meant to ever be shared into a project the same way samples/collections can be (a project-specific protocol document), or are they purely personal reference material with no project link at all?
+- **Sample/collection/protocol ownership when an Editor creates new data while working inside a shared project**: went with the proposed default above under "Account model" — owned by whoever created it, linked into the project via `sample_projects`/`protocol_projects`.
+- **Can an Owner demote or remove another Owner?**: yes, as long as at least one Owner remains afterward (enforced server-side — see `project-members-store.ts`'s `guardLastOwner`). **Can a Viewer/Editor leave a project on their own?**: yes, anyone can remove themselves from a project at any time (also subject to the last-Owner guard if they happen to be the sole Owner).
+- **Are Protocols meant to ever be shared into a project?**: yes — this was already implemented (`protocol_projects`, mirroring `sample_projects`) before this phase; Phase 3 just added the role checks and cross-owner access on top of it.
+- **Project name uniqueness**: dropped the global unique constraint on `projects.name` (see `0036_project_members.sql`) — projects are private to their members by default, so two different accounts having a same-named project is normal now, not a conflict. Uniqueness is still enforced app-side, but scoped to the *acting account's own visible projects* (`assertUniqueNameForUser` in `projects-store.ts`), not everyone's.
