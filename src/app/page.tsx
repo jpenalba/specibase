@@ -8,28 +8,28 @@ const CAPABILITIES = [
     icon: FolderKanban,
     title: "Projects",
     description:
-      "Organize samples by research project. Each one gets its own Info, Samples, Lab Workflow, Bioinformatics, Bio Notes, and References tabs.",
+      "Organize samples by research project, and share one with specific collaborators as a Viewer, Editor, or Owner from its Members dialog. Each project gets its own Info, Samples, Lab Workflow, Bioinformatics, Bio Notes, and References tabs.",
   },
   {
     href: "/database",
     icon: Database,
     title: "Database",
     description:
-      "Every sample across every project, mapped and searchable. Filter, style markers by any field, and overlay GBIF occurrence data.",
+      "Your own samples, mapped and searchable — private by default, plus whatever's shared into a project you're a member of. Filter, style markers by any field, and overlay GBIF occurrence data.",
   },
   {
     href: "/collections",
     icon: Archive,
     title: "Collections",
     description:
-      "Track external field, museum, or collaborator sample sets as their own map layers — one click copies them into the main database.",
+      "Track external field, museum, or collaborator sample sets as their own map layers — one click copies them into your main database.",
   },
   {
     href: "/protocols",
     icon: ClipboardList,
     title: "Protocols",
     description:
-      "Keep field, lab, and bioinformatic protocols in one place, either as an uploaded PDF or (soon) built directly in Specibase.",
+      "Keep field, lab, and bioinformatic protocols in one place, either as an uploaded PDF or built directly in Specibase with its own markdown editor.",
   },
 ];
 
@@ -40,7 +40,11 @@ const QUICK_START = [
   },
   {
     title: "Organize into projects",
-    body: "Group samples under a project. A sample can belong to more than one — Database always shows everything, a project's own Samples tab shows just its slice.",
+    body: "Group samples under a project. A sample can belong to more than one — Database always shows your own, a project's own Samples tab shows everyone's contributions to it.",
+  },
+  {
+    title: "Invite collaborators",
+    body: "A new project starts visible only to you. Add people to it from its Members button and pick their role — Viewer (read-only), Editor (can add and edit), or Owner (can also manage membership).",
   },
   {
     title: "Track lab & bioinformatic work",
@@ -53,6 +57,10 @@ const QUICK_START = [
   {
     title: "Export your work",
     body: "Download a CSV of any table, a PDF of a single section, or compile a whole project — including the map — into one report.",
+  },
+  {
+    title: "Set up your profile",
+    body: "Add your name, title, institution, and a photo from the account menu (top right) — it's what your collaborators see and what shows up in the activity log.",
   },
 ];
 
@@ -68,7 +76,9 @@ export default function Home() {
           <p className="mx-auto max-w-xl text-balance text-muted-foreground">
             A sample database and interactive map for evolutionary biology
             field collections — samples, lab and bioinformatic workflows,
-            collections, and protocols, all in one place.
+            collections, and protocols, all in one place. Your own private
+            workspace by default; share a project with named collaborators
+            when you want a second set of hands on it.
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-3">
