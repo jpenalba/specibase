@@ -172,6 +172,9 @@ export default function LogsPage() {
                     )}
                   >
                     <span className={cn(entry.undone_at && "text-muted-foreground line-through")}>
+                      {entry.performed_by && (
+                        <span className="font-medium">{entry.performed_by}: </span>
+                      )}
                       {entry.summary}
                     </span>
                     <span className="flex shrink-0 items-center gap-3">

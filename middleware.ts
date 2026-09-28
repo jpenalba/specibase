@@ -30,6 +30,12 @@ import { createServerClient } from "@supabase/ssr";
 // site breaking the moment this code ships, before the one-time manual
 // Supabase setup (see .env.example) is done.
 const PUBLIC_PATHS = ["/login"];
+// API routes reachable while signed out — just the one the login form
+// itself needs (turning a username into an email before it can even call
+// Supabase Auth). Checked separately from PUBLIC_PATHS since, unlike
+// /login, an already-signed-in caller hitting this shouldn't get bounced
+// to "/" — it's a plain lookup, not a page.
+const PUBLIC_API_PATHS = ["/api/auth/resolve-identifier"];
 
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -58,8 +64,9 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isPublicPath = PUBLIC_PATHS.includes(request.nextUrl.pathname);
+  const isPublicApiPath = PUBLIC_API_PATHS.includes(request.nextUrl.pathname);
 
-  if (!user && !isPublicPath) {
+  if (!user && !isPublicPath && !isPublicApiPath) {
     if (request.nextUrl.pathname.startsWith("/api")) {
       return NextResponse.json({ errors: ["Not authenticated"] }, { status: 401 });
     }

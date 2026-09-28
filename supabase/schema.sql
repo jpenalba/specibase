@@ -29,9 +29,21 @@ create table if not exists profiles (
   last_name text,
   first_name text,
   institution text,
+  department text,
   position text,
-  lab_group text
+  lab_group text,
+  -- A public Storage URL (see the `avatars` bucket below) — no separate
+  -- filename tracking needed, unlike protocols' PDFs, since nothing else
+  -- ever needs to reconstruct the path.
+  avatar_url text,
+  -- Chosen at account setup or filled in later; nullable, so an account
+  -- without one just signs in with email. Case-insensitive uniqueness is
+  -- the index below, not a column constraint (Postgres can't express
+  -- "unique on lower(x)" as one).
+  username text
 );
+
+create unique index if not exists profiles_username_unique_idx on profiles (lower(username));
 
 -- Auto-creates a profile row the moment a new auth.users row appears.
 create or replace function public.handle_new_user()
@@ -622,7 +634,14 @@ create table if not exists activity_log (
   -- the shared Database, say). set null on delete rather than cascade: a
   -- deleted project's log entries stay in the global feed instead of
   -- disappearing with it.
-  project_id uuid references projects (id) on delete set null
+  project_id uuid references projects (id) on delete set null,
+
+  -- Who did it — a denormalized snapshot (their username, or email if
+  -- they haven't set one) taken at the moment of the action, same
+  -- "precomputed, not joined" approach as summary above. Null means the
+  -- entry predates this (or logActivity couldn't resolve a signed-in
+  -- account at the time).
+  performed_by text
 );
 
 -- Single-row (id always 1) table of app-wide settings — no per-user auth,
@@ -695,4 +714,9 @@ on conflict (id) do nothing;
 -- Public bucket for uploaded protocol PDFs (see src/app/api/protocols/upload).
 insert into storage.buckets (id, name, public)
 values ('protocol-files', 'protocol-files', true)
+on conflict (id) do nothing;
+
+-- Public bucket for profile photos (see src/app/api/profile/avatar).
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
 on conflict (id) do nothing;

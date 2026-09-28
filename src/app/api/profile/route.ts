@@ -41,15 +41,20 @@ export async function PATCH(request: NextRequest) {
       return typeof body[key] === "string" ? body[key] : "";
     };
 
-    const profile = await updateProfile(auth.user.id, {
+    const result = await updateProfile(auth.user.id, {
       title,
+      username: stringField("username"),
       last_name: stringField("last_name"),
       first_name: stringField("first_name"),
       institution: stringField("institution"),
+      department: stringField("department"),
       position: stringField("position"),
       lab_group: stringField("lab_group"),
     });
-    return NextResponse.json({ profile });
+    if (!result.ok) {
+      return NextResponse.json({ errors: result.errors }, { status: 400 });
+    }
+    return NextResponse.json({ profile: result.profile });
   } catch (error) {
     return apiError(error);
   }

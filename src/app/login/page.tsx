@@ -15,7 +15,7 @@ function LoginForm() {
   const rawNext = searchParams.get("next") ?? "/";
   const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -25,8 +25,28 @@ function LoginForm() {
     setSubmitting(true);
     setError(null);
     try {
+      const trimmed = identifier.trim();
+      let email = trimmed;
+      // Supabase Auth only ever signs in with an email — a bare username
+      // needs resolving first. "@" is enough to tell them apart, since
+      // usernames are deliberately restricted to a non-email character set
+      // (see USERNAME_PATTERN in profile-store.ts).
+      if (!trimmed.includes("@")) {
+        const res = await fetch("/api/auth/resolve-identifier", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identifier: trimmed }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.errors?.join(" ") ?? "Invalid username or password");
+          return;
+        }
+        email = data.email;
+      }
+
       const { error } = await getSupabaseBrowserClient().auth.signInWithPassword({
-        email: email.trim(),
+        email,
         password,
       });
       if (error) {
@@ -59,14 +79,14 @@ function LoginForm() {
 
       <form onSubmit={handleSubmit} className="grid gap-4">
         <div className="grid gap-1.5">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="identifier">Email or username</Label>
           <Input
-            id="email"
-            type="email"
-            autoComplete="email"
+            id="identifier"
+            type="text"
+            autoComplete="username"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
           />
         </div>
         <div className="grid gap-1.5">

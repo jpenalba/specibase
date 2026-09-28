@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROFILE_TITLES, Profile, ProfileTitle } from "@/lib/profile-store";
+import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@/lib/image-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,22 +15,27 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Avatar } from "./avatar";
 
 type FormState = {
+  username: string;
   title: ProfileTitle | "";
   lastName: string;
   firstName: string;
   institution: string;
+  department: string;
   position: string;
   labGroup: string;
 };
 
 function formFromProfile(profile: Profile | null): FormState {
   return {
+    username: profile?.username ?? "",
     title: profile?.title ?? "",
     lastName: profile?.last_name ?? "",
     firstName: profile?.first_name ?? "",
     institution: profile?.institution ?? "",
+    department: profile?.department ?? "",
     position: profile?.position ?? "",
     labGroup: profile?.lab_group ?? "",
   };
@@ -50,9 +56,12 @@ export function ProfileDialog({
   onSaved: () => void;
 }) {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [values, setValues] = useState<FormState>(() => formFromProfile(profile));
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url ?? null);
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -62,7 +71,46 @@ export function ProfileDialog({
     onOpenChange(next);
     if (next) {
       setValues(formFromProfile(profile));
+      setAvatarUrl(profile?.avatar_url ?? null);
       setErrors([]);
+    }
+  }
+
+  // Uploaded immediately on selection, separately from the rest of the
+  // form's Save button — same reasoning as a protocol's PDF: there's
+  // nothing to stage, the file itself is the whole submission.
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setErrors([`Unsupported image type "${file.type || "unknown"}"`]);
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setErrors([`Image is too large — max ${Math.floor(MAX_IMAGE_BYTES / (1024 * 1024))}MB`]);
+      return;
+    }
+
+    setUploadingPhoto(true);
+    setErrors([]);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/profile/avatar", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrors(data.errors ?? ["Couldn't upload that photo."]);
+        return;
+      }
+      setAvatarUrl(data.profile.avatar_url);
+      onSaved();
+      router.refresh();
+    } catch {
+      setErrors(["Couldn't reach the server."]);
+    } finally {
+      setUploadingPhoto(false);
     }
   }
 
@@ -75,10 +123,12 @@ export function ProfileDialog({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          username: values.username,
           title: values.title || null,
           last_name: values.lastName,
           first_name: values.firstName,
           institution: values.institution,
+          department: values.department,
           position: values.position,
           lab_group: values.labGroup,
         }),
@@ -119,6 +169,39 @@ export function ProfileDialog({
               </ul>
             </div>
           )}
+
+          <div className="flex items-center gap-4">
+            <Avatar url={avatarUrl} size={56} />
+            <div className="grid gap-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ALLOWED_IMAGE_TYPES.join(",")}
+                className="hidden"
+                onChange={handlePhotoChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploadingPhoto}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploadingPhoto ? "Uploading..." : "Change photo"}
+              </Button>
+              <p className="text-xs text-muted-foreground">PNG, JPEG, WebP, or GIF, up to 8MB.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="profile-username">Username</Label>
+            <Input
+              id="profile-username"
+              placeholder="Optional — lets you sign in without your email"
+              value={values.username}
+              onChange={(e) => update("username", e.target.value)}
+            />
+          </div>
 
           <div className="grid grid-cols-[7rem_1fr] gap-3">
             <div className="grid gap-1.5">
@@ -162,6 +245,15 @@ export function ProfileDialog({
               id="profile-institution"
               value={values.institution}
               onChange={(e) => update("institution", e.target.value)}
+            />
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="profile-department">Department</Label>
+            <Input
+              id="profile-department"
+              value={values.department}
+              onChange={(e) => update("department", e.target.value)}
             />
           </div>
 

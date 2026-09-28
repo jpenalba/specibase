@@ -4,7 +4,9 @@ import { getProfile, formatDisplayName } from "./profile-store";
 export type CurrentUser = {
   id: string;
   email: string;
+  username: string | null;
   displayName: string | null;
+  avatarUrl: string | null;
 };
 
 // The start of the DAL the auth plan calls for — right now this only
@@ -22,6 +24,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   return {
     id: user.id,
     email: user.email ?? "",
+    username: profile?.username ?? null,
     displayName: profile ? formatDisplayName(profile) : null,
+    avatarUrl: profile?.avatar_url ?? null,
   };
 }

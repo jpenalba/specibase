@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { getCurrentUser } from "./current-user";
 
 const LOG_TABLE = "activity_log";
 const SETTINGS_TABLE = "app_settings";
@@ -21,6 +22,7 @@ export type ActivityLogEntry = {
   undo_data: UndoData | null;
   undone_at: string | null;
   project_id: string | null;
+  performed_by: string | null;
 };
 
 // Fails open (treated as enabled) if the settings row is missing or the
@@ -54,7 +56,12 @@ export async function setActivityLoggingEnabled(enabled: boolean): Promise<void>
 // "Undo" button on this entry in the Logs page. projectId is omitted for
 // anything that isn't clearly scoped to one project (most entries today —
 // a sample edit from the shared Database, say); its presence is what
-// makes an entry show up in that project's own Logs tab.
+// makes an entry show up in that project's own Logs tab. Resolves the
+// acting account itself (username, falling back to email) rather than
+// taking it as a parameter — every call site already runs inside an
+// authenticated request, so there's nothing for callers to thread through,
+// at the cost of one extra lookup on top of whatever requireUser() already
+// did in the route.
 export async function logActivity(
   entityType: string,
   action: string,
@@ -64,6 +71,7 @@ export async function logActivity(
 ): Promise<void> {
   try {
     if (!(await isActivityLoggingEnabled())) return;
+    const user = await getCurrentUser();
     await getSupabase()
       .from(LOG_TABLE)
       .insert({
@@ -72,6 +80,7 @@ export async function logActivity(
         summary,
         undo_data: undoData ?? null,
         project_id: projectId ?? null,
+        performed_by: user ? (user.username ?? user.email) : null,
       });
   } catch {
     // Swallow — see above.
