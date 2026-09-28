@@ -65,6 +65,8 @@ The original roadmap's phases don't map cleanly onto what shipped, so here's eve
 | # | Gap | Verdict | Why |
 |---|---|---|---|
 | 2 | Sample attachments (photos, chromatograms) | **Worth doing** | The image-upload-to-a-public-bucket pattern already exists twice (project background images, protocol PDFs); a `sample-attachments` bucket + a small linking table is the same shape again. High value for a tissue/specimen tracker. |
+| 6 | Auth & per-user roles (login, two-tier account model, per-project viewer/editor/owner) | **In design** | See [`AUTH_AND_PERMISSIONS_PLAN.md`](./AUTH_AND_PERMISSIONS_PLAN.md) for the full plan — revived after previously being dropped. Architecturally significant (gates every page behind login) and has open questions to resolve before starting; not yet underway. |
+| 12 | Per-project collaborator invites | **In design** | Bundled into gap #6's design doc — collaborator accounts and per-project "Add member" invites are part of the same plan, not separable from it. |
 | 4 | Per-sample timeline view (every Lab + Bioinformatic workflow stage, in order, for one sample) | **Worth considering** | Real value for tracing one sample's history, and nothing blocks it — but it means a new cross-workflow aggregation query (entries + detail values across every workflow a sample appears in), not a trivial add. |
 | 5 | Multi-select + bulk edit on sample tables | **Lower priority** | Most of the practical need is already covered by the CSV export → edit → re-import round trip, plus the workflow grids' own fill-handle and Editing mode. A dedicated bulk-edit UI would be a convenience layer on existing capability, not a new one. |
 | 7 | `SampleIdentifier` as a normalized many-to-many table (arbitrary repeatable identifier types) | **Skip as originally scoped** | Cuts against the app's whole flat-column philosophy. If more than the existing `additional_number` field is ever needed, add named columns the same way `genus`/`taxon_order` were added (via `OPTIONAL_FIELDS`) — simpler and consistent with everything else, at the cost of not being fully open-ended. |
@@ -74,7 +76,9 @@ The original roadmap's phases don't map cleanly onto what shipped, so here's eve
 | 11 | Notifications (e.g. "sample stuck at extracted for 90+ days") | **Skip** | There's no notification delivery mechanism (email/push) anywhere in the app, and nothing else has asked for one. This needs that infrastructure decided first, independent of workflow tracking itself. |
 | 14 | Publish back to GBIF as an occurrence dataset | **Skip** | Niche and speculative — nothing so far suggests this is actually needed. |
 
-Gaps #6 (Auth & per-user roles), #12 (per-project collaborator invites), and #15 (automatic whole-database archiving) have been dropped from consideration — not just deferred. Auth/roles was designed (see git history for `AUTH_AND_PERMISSIONS_PLAN.md`) but is no longer something this project wants to build; #12 was entirely dependent on it. Archiving was already effectively superseded by the narrower Undo feature that shipped instead (see `src/lib/activity-log.ts` and the Logs page) before its own design doc (`ARCHIVING_PLAN.md`) was written; both docs have been removed rather than kept as dead design references.
+Gap #15 (automatic whole-database archiving) has been dropped from consideration — not just deferred. It was already effectively superseded by the narrower Undo feature that shipped instead (see `src/lib/activity-log.ts` and the Logs page) before its own design doc (`ARCHIVING_PLAN.md`) was written; that doc has been removed rather than kept as a dead design reference.
+
+Gaps #6 and #12 were dropped for a time (see git history around the removal of `AUTH_AND_PERMISSIONS_PLAN.md`) but have since been revived — see the table above.
 
 Gaps #1 (CSV duplicate-ID flagging), #3 (linked external accessions), and #13 (public read-only share link) have also been dropped — not pursuing these either.
 
