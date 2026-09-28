@@ -16,10 +16,6 @@ export type Project = {
   created_at: string;
   description: string | null;
   start_date: string | null;
-  owner: string | null;
-  // Free-text, comma-separated — see parseCollaborators() in
-  // @/lib/collaborators for turning this into a list for display.
-  collaborators: string | null;
   focal_group: string | null;
   // An explicit icon choice — overrides auto-matching focal_group's text
   // (see @/lib/focal-group) when set. Null means keep auto-matching.
@@ -48,8 +44,6 @@ export type NewProjectInput = {
   name: string;
   description?: string;
   start_date?: string;
-  owner?: string;
-  collaborators?: string;
   focal_group?: string;
   focal_region?: string;
   logo?: FocalGroupCategory | null;
@@ -108,8 +102,6 @@ export async function createProject(input: NewProjectInput, creatorId: string): 
       name,
       description: input.description?.trim() || null,
       start_date: input.start_date || null,
-      owner: input.owner?.trim() || null,
-      collaborators: input.collaborators?.trim() || null,
       focal_group: input.focal_group?.trim() || null,
       focal_region: input.focal_region?.trim() || null,
       logo: input.logo || null,
@@ -145,8 +137,6 @@ export async function updateProject(
   }
   if (input.description !== undefined) patch.description = input.description.trim() || null;
   if (input.start_date !== undefined) patch.start_date = input.start_date || null;
-  if (input.owner !== undefined) patch.owner = input.owner.trim() || null;
-  if (input.collaborators !== undefined) patch.collaborators = input.collaborators.trim() || null;
   if (input.focal_group !== undefined) patch.focal_group = input.focal_group.trim() || null;
   if (input.focal_region !== undefined) patch.focal_region = input.focal_region.trim() || null;
   if (input.logo !== undefined) patch.logo = input.logo || null;

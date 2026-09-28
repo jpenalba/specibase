@@ -7,6 +7,7 @@ import { Project } from "@/lib/projects-store";
 import { ProjectReference } from "@/lib/project-references-store";
 import { SampleRecord } from "@/lib/samples-store";
 import { SampleProjectLink } from "@/lib/projects-store";
+import { ProjectMemberWithProfile } from "@/lib/project-members-store";
 import { MarkerStyle } from "@/lib/project-marker-styles-store";
 import { BioNotesBlock } from "@/lib/project-bio-notes-store";
 import { LabNotesBlock, NoteImage } from "@/lib/project-lab-notes-store";
@@ -20,7 +21,6 @@ import { renderMarkdownToPdf, renderParagraph } from "@/lib/markdown-pdf";
 import { detailTableToAutoTableRows, samplesToAutoTableRows } from "@/lib/csv";
 import { formatTimestampDisplay } from "@/lib/date-format";
 import { formatToDDMMYYYY } from "@/lib/dates";
-import { parseCollaborators } from "@/lib/collaborators";
 import { SampleMap, SampleMapHandle, CapturedMapImage } from "@/components/database/sample-map";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -332,15 +332,20 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
       doc.setTextColor(0);
       y += 18;
 
+      const membersData = await fetch(`/api/projects/${projectId}/members`).then((res) => res.json());
+      const members = (membersData.members ?? []) as ProjectMemberWithProfile[];
+      const memberName = (m: ProjectMemberWithProfile) => m.display_name ?? m.username ?? m.email;
+
       const metaLines: string[] = [
         `Status: ${project.status === "completed" ? "Completed" : "In progress"}`,
       ];
       if (project.start_date) metaLines.push(`Start date: ${formatToDDMMYYYY(project.start_date)}`);
-      if (project.owner) metaLines.push(`Owner: ${project.owner}`);
+      const owners = members.filter((m) => m.role === "owner").map(memberName);
+      if (owners.length > 0) metaLines.push(`Owner: ${owners.join(", ")}`);
       if (project.focal_group) metaLines.push(`Focal species/group: ${project.focal_group}`);
       if (project.focal_region) metaLines.push(`Focal region: ${project.focal_region}`);
-      const collaborators = parseCollaborators(project.collaborators);
-      if (collaborators.length > 0) metaLines.push(`Collaborators: ${collaborators.join(", ")}`);
+      const collaboratorNames = members.filter((m) => m.role !== "owner").map(memberName);
+      if (collaboratorNames.length > 0) metaLines.push(`Collaborators: ${collaboratorNames.join(", ")}`);
 
       doc.setFontSize(10);
       for (const line of metaLines) {

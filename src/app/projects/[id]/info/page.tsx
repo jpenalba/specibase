@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Project } from "@/lib/projects-store";
 import { ProjectReference } from "@/lib/project-references-store";
-import { parseCollaborators } from "@/lib/collaborators";
+import { ProjectMemberWithProfile } from "@/lib/project-members-store";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import { renderMarkdownToPdf, renderParagraph } from "@/lib/markdown-pdf";
 import { MarkdownField } from "@/components/projects/markdown-field";
@@ -25,6 +25,10 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="mb-3 border-b border-border pb-2 text-lg font-semibold">{children}</h2>;
 }
 
+function memberName(member: ProjectMemberWithProfile): string {
+  return member.display_name ?? member.username ?? member.email;
+}
+
 export default function ProjectInfoPage() {
   const { id: projectId } = useParams<{ id: string }>();
 
@@ -33,6 +37,7 @@ export default function ProjectInfoPage() {
   // page only needs the list for the PDF export below, not for rendering
   // (ReferencesSection handles that itself).
   const [references, setReferences] = useState<ProjectReference[]>([]);
+  const [members, setMembers] = useState<ProjectMemberWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -42,8 +47,9 @@ export default function ProjectInfoPage() {
     Promise.all([
       fetch("/api/projects").then((res) => res.json()),
       fetch(`/api/projects/${projectId}/references`).then((res) => res.json()),
+      fetch(`/api/projects/${projectId}/members`).then((res) => res.json()),
     ])
-      .then(([data, referencesData]) => {
+      .then(([data, referencesData, membersData]) => {
         if (cancelled) return;
         if (data.errors?.length > 0) {
           setError(data.errors.join(" "));
@@ -52,6 +58,7 @@ export default function ProjectInfoPage() {
         setError(null);
         setProject((data.projects ?? []).find((p: Project) => p.id === projectId) ?? null);
         setReferences(referencesData.references ?? []);
+        setMembers(membersData.members ?? []);
       })
       .catch(() => {
         if (!cancelled) setError("Couldn't reach the server.");
@@ -143,9 +150,10 @@ export default function ProjectInfoPage() {
     );
   }
 
-  const collaborators = parseCollaborators(project.collaborators);
+  const owner = members.find((m) => m.role === "owner");
+  const collaborators = members.filter((m) => m.role !== "owner");
   const hasDetails =
-    project.start_date || project.owner || project.focal_group || project.focal_region || collaborators.length > 0;
+    project.start_date || owner || project.focal_group || project.focal_region || collaborators.length > 0;
 
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-8">
@@ -163,19 +171,19 @@ export default function ProjectInfoPage() {
               label="Start date"
               value={project.start_date ? formatToDDMMYYYY(project.start_date) : null}
             />
-            <DetailField label="Owner" value={project.owner} />
+            <DetailField label="Owner" value={owner ? memberName(owner) : null} />
             <DetailField label="Focal species/group" value={project.focal_group} />
             <DetailField label="Focal region" value={project.focal_region} />
             {collaborators.length > 0 && (
               <div className="col-span-full">
                 <dt className="text-xs font-medium text-muted-foreground">Collaborators</dt>
                 <dd className="flex flex-wrap gap-1 pt-1">
-                  {collaborators.map((name) => (
+                  {collaborators.map((member) => (
                     <span
-                      key={name}
+                      key={member.user_id}
                       className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground"
                     >
-                      {name}
+                      {memberName(member)}
                     </span>
                   ))}
                 </dd>

@@ -6,6 +6,7 @@ import {
   listSampleProjectLinks,
   listProtocolProjectLinks,
 } from "@/lib/projects-store";
+import { listMembersForProjects } from "@/lib/project-members-store";
 import { logActivity } from "@/lib/activity-log";
 import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
@@ -13,7 +14,10 @@ import { parseProjectFields } from "./parse-body";
 
 // Every sample/protocol project-link is still returned unfiltered — they're
 // small join tables, and callers (the Samples/Protocols tabs) already
-// intersect them against the projects this response includes.
+// intersect them against the projects this response includes. `members`
+// covers every visible project's membership in one query, so the
+// /projects list page's cards can show each project's Owner/Collaborators
+// without an N+1 fetch per card.
 export async function GET() {
   try {
     const auth = await requireUser();
@@ -23,7 +27,8 @@ export async function GET() {
       listSampleProjectLinks(),
       listProtocolProjectLinks(),
     ]);
-    return NextResponse.json({ projects, links, protocolLinks });
+    const members = await listMembersForProjects(projects.map((p) => p.id));
+    return NextResponse.json({ projects, links, protocolLinks, members });
   } catch (error) {
     return apiError(error);
   }

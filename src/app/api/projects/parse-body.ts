@@ -21,8 +21,6 @@ function stringField(body: Record<string, unknown>, key: string): string | undef
 export type ParsedProjectFields = {
   description?: string;
   start_date?: string;
-  owner?: string;
-  collaborators?: string;
   focal_group?: string;
   focal_region?: string;
   logo?: FocalGroupCategory | null;
@@ -98,8 +96,6 @@ export function parseProjectFields(
   return {
     description: stringField(body, "description"),
     start_date: stringField(body, "start_date"),
-    owner: stringField(body, "owner"),
-    collaborators: stringField(body, "collaborators"),
     focal_group: stringField(body, "focal_group"),
     focal_region: stringField(body, "focal_region"),
     logo,

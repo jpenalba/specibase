@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Pencil, FolderOpen } from "lucide-react";
 import { Project } from "@/lib/projects-store";
-import { parseCollaborators } from "@/lib/collaborators";
+import { ProjectMemberWithProfile } from "@/lib/project-members-store";
 import { formatToDDMMYYYY } from "@/lib/dates";
 import { FocalGroupIcon } from "./focal-group-icon";
 import { ProjectStatusBadge } from "./project-status-badge";
@@ -19,16 +19,28 @@ function Field({ label, value }: { label: string; value: string | null }) {
   );
 }
 
+function memberName(member: ProjectMemberWithProfile): string {
+  return member.display_name ?? member.username ?? member.email;
+}
+
 export function ProjectCard({
   project,
   sampleIds,
+  members,
   onSaved,
 }: {
   project: Project;
   sampleIds: string[];
+  // Every member of this project, Owner included — see /projects/page.tsx,
+  // which fetches all visible projects' members in one call so each card
+  // doesn't have to.
+  members: ProjectMemberWithProfile[];
   onSaved: () => void;
 }) {
-  const collaborators = parseCollaborators(project.collaborators);
+  const owner = members.find((m) => m.role === "owner");
+  // "Collaborators" is everyone the Owner has shared the project with —
+  // i.e. every member who isn't an Owner themselves.
+  const collaborators = members.filter((m) => m.role !== "owner");
   return (
     <Card className="relative">
       <div className="absolute left-3 top-3">
@@ -64,19 +76,19 @@ export function ProjectCard({
             label="Start date"
             value={project.start_date ? formatToDDMMYYYY(project.start_date) : null}
           />
-          <Field label="Owner" value={project.owner} />
+          <Field label="Owner" value={owner ? memberName(owner) : null} />
           <Field label="Focal species/group" value={project.focal_group} />
           <Field label="Focal region" value={project.focal_region} />
           {collaborators.length > 0 && (
             <div className="col-span-2">
               <dt className="text-xs font-medium text-muted-foreground">Collaborators</dt>
               <dd className="flex flex-wrap gap-1 pt-1">
-                {collaborators.map((name) => (
+                {collaborators.map((member) => (
                   <span
-                    key={name}
+                    key={member.user_id}
                     className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground"
                   >
-                    {name}
+                    {memberName(member)}
                   </span>
                 ))}
               </dd>

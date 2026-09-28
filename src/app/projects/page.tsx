@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Project, SampleProjectLink } from "@/lib/projects-store";
+import { ProjectMemberWithProfile } from "@/lib/project-members-store";
 import { ProjectDialog } from "@/components/projects/project-dialog";
 import { ProjectCard } from "@/components/projects/project-card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [links, setLinks] = useState<SampleProjectLink[]>([]);
+  const [members, setMembers] = useState<ProjectMemberWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +27,7 @@ export default function ProjectsPage() {
           setError(null);
           setProjects(data.projects ?? []);
           setLinks(data.links ?? []);
+          setMembers(data.members ?? []);
         }
       })
       .catch(() => setError("Couldn't reach the server."))
@@ -71,11 +74,13 @@ export default function ProjectsPage() {
             const sampleIds = links
               .filter((l) => l.project_id === project.id)
               .map((l) => l.sample_id);
+            const projectMembers = members.filter((m) => m.project_id === project.id);
             return (
               <ProjectCard
                 key={project.id}
                 project={project}
                 sampleIds={sampleIds}
+                members={projectMembers}
                 onSaved={load}
               />
             );

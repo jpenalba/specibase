@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Project, ProjectStatus } from "@/lib/projects-store";
+import { formatDisplayName } from "@/lib/profile-store";
 import { parseDDMMYYYY, DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
 import { categorizeFocalGroup, FocalGroupCategory } from "@/lib/focal-group";
 import { Button } from "@/components/ui/button";
@@ -24,8 +25,6 @@ type FormState = {
   name: string;
   description: string;
   startDate: string;
-  owner: string;
-  collaborators: string;
   focalGroup: string;
   focalRegion: string;
   // null means "auto-match from focal species/group" — see FocalGroupIcon.
@@ -47,8 +46,6 @@ function emptyForm(): FormState {
     // Defaults to today, still a plain editable field if the project
     // actually started on a different day.
     startDate: todayDDMMYYYY(),
-    owner: "",
-    collaborators: "",
     focalGroup: "",
     focalRegion: "",
     logo: null,
@@ -61,8 +58,6 @@ function formFromProject(project: Project): FormState {
     name: project.name,
     description: project.description ?? "",
     startDate: project.start_date ? formatToDDMMYYYY(project.start_date) : "",
-    owner: project.owner ?? "",
-    collaborators: project.collaborators ?? "",
     focalGroup: project.focal_group ?? "",
     focalRegion: project.focal_region ?? "",
     logo: project.logo,
@@ -104,6 +99,24 @@ export function ProjectDialog({
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  // Only shown (disabled) on create — creating a project always makes the
+  // signed-in account its first Owner (see createProject in
+  // projects-store.ts), so there's nothing to pick. Fetched fresh each
+  // time the dialog opens rather than passed in, since callers of this
+  // dialog (the Projects page, the sample upload page's project picker)
+  // don't otherwise need to know who's signed in.
+  const [ownerName, setOwnerName] = useState("");
+
+  useEffect(() => {
+    if (!open || isEdit) return;
+    fetch("/api/profile")
+      .then((res) => res.json())
+      .then((data) => {
+        const profile = data.profile;
+        setOwnerName(profile ? (formatDisplayName(profile) ?? profile.username ?? profile.email) : "");
+      })
+      .catch(() => {});
+  }, [open, isEdit]);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -152,8 +165,6 @@ export function ProjectDialog({
           name,
           description: values.description,
           start_date: startDateIso ?? "",
-          owner: values.owner,
-          collaborators: values.collaborators,
           focal_group: values.focalGroup,
           focal_region: values.focalRegion,
           logo: values.logo ?? "",
@@ -219,7 +230,7 @@ export function ProjectDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={isEdit ? "grid gap-1.5" : "grid grid-cols-2 gap-3"}>
             <div className="grid gap-1.5">
               <Label htmlFor="project-start-date">Start date</Label>
               <Input
@@ -229,24 +240,12 @@ export function ProjectDialog({
                 onChange={(e) => update("startDate", e.target.value)}
               />
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="project-owner">Owner</Label>
-              <Input
-                id="project-owner"
-                value={values.owner}
-                onChange={(e) => update("owner", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="project-collaborators">Collaborators</Label>
-            <Input
-              id="project-collaborators"
-              placeholder="Comma-separated, e.g. Jane Doe, John Smith"
-              value={values.collaborators}
-              onChange={(e) => update("collaborators", e.target.value)}
-            />
+            {!isEdit && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="project-owner">Owner</Label>
+                <Input id="project-owner" value={ownerName} disabled />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -158,8 +158,6 @@ create table if not exists projects (
 
   description text,
   start_date date,
-  owner text,
-  collaborators text,
   focal_group text,
   focal_region text,
   -- An explicit icon choice (one of the categories in

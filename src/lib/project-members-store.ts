@@ -70,6 +70,42 @@ export async function listMembers(projectId: string): Promise<ProjectMemberWithP
   });
 }
 
+// Every member of every project in `projectIds`, in one query — used by
+// the /projects list page so each card's Owner/Collaborators display
+// doesn't cost its own round trip (see listMembers above for the
+// single-project version, used on a project's own pages).
+export async function listMembersForProjects(
+  projectIds: string[]
+): Promise<ProjectMemberWithProfile[]> {
+  if (projectIds.length === 0) return [];
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select("*, profiles(email, username, title, first_name, last_name, avatar_url)")
+    .in("project_id", projectIds)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => {
+    const profile = row.profiles as {
+      email: string;
+      username: string | null;
+      title: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      avatar_url: string | null;
+    };
+    return {
+      project_id: row.project_id,
+      user_id: row.user_id,
+      role: row.role,
+      created_at: row.created_at,
+      email: profile.email,
+      username: profile.username,
+      display_name: formatDisplayName(profile),
+      avatar_url: profile.avatar_url,
+    } as ProjectMemberWithProfile;
+  });
+}
+
 async function countOwners(projectId: string): Promise<number> {
   const { count, error } = await getSupabase()
     .from(TABLE)
