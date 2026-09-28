@@ -19,7 +19,18 @@ create table if not exists profiles (
   email text not null,
   display_name text,
   log_enabled boolean not null default true,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+
+  -- Editable profile fields — see the account dropdown's Profile section
+  -- (supabase/migrations/0033_profile_fields.sql). display_name above is
+  -- unused for now; the app computes a display name from these instead
+  -- once any of them are set.
+  title text check (title is null or title in ('Dr.', 'Prof', 'Ph.D.')),
+  last_name text,
+  first_name text,
+  institution text,
+  position text,
+  lab_group text
 );
 
 -- Auto-creates a profile row the moment a new auth.users row appears.

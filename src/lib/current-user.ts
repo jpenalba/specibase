@@ -1,5 +1,5 @@
 import { getSupabaseServerClient } from "./supabase-server";
-import { getSupabase } from "./supabase";
+import { getProfile, formatDisplayName } from "./profile-store";
 
 export type CurrentUser = {
   id: string;
@@ -17,15 +17,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: profile } = await getSupabase()
-    .from("profiles")
-    .select("display_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  const profile = await getProfile(user.id);
 
   return {
     id: user.id,
     email: user.email ?? "",
-    displayName: (profile?.display_name as string | null) ?? null,
+    displayName: profile ? formatDisplayName(profile) : null,
   };
 }

@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CurrentUser } from "@/lib/current-user";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { AccountMenu } from "@/components/account/account-menu";
 import { ThemeToggle } from "./theme-toggle";
 
 const LINKS = [
@@ -19,13 +18,6 @@ const LINKS = [
 export function NavBar({ user }: { user: CurrentUser | null }) {
   const pathname = usePathname();
 
-  async function signOut() {
-    await getSupabaseBrowserClient().auth.signOut();
-    // A full navigation — proxy.ts needs to see the cleared session
-    // cookie, which a client-side route transition wouldn't re-fetch for.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = "/login";
-  }
   return (
     <nav className="border-b border-border">
       <div className="mx-auto flex max-w-6xl items-center gap-1 px-6 py-3 sm:px-10">
@@ -71,16 +63,7 @@ export function NavBar({ user }: { user: CurrentUser | null }) {
             );
           })}
         <div className="ml-auto flex items-center gap-2">
-          {user && (
-            <>
-              <span className="hidden text-sm text-muted-foreground sm:inline">
-                {user.displayName ?? user.email}
-              </span>
-              <Button variant="outline" size="sm" onClick={signOut}>
-                Sign out
-              </Button>
-            </>
-          )}
+          {user && <AccountMenu user={user} />}
           <ThemeToggle />
         </div>
       </div>
