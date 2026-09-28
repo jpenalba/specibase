@@ -35,32 +35,28 @@ const CAPABILITIES = [
 
 const QUICK_START = [
   {
-    title: "Add your samples",
-    body: "In Database (or a project's Samples tab), add samples one at a time or import a CSV. Typing a species name offers GBIF suggestions and auto-fills its higher taxonomy.",
+    title: "Create a project",
+    body: "Start from the Projects page — give it a name, a focal species or region, and a start date. It's visible only to you until you decide to share it.",
   },
   {
-    title: "Organize into projects",
-    body: "Group samples under a project. A sample can belong to more than one — Database always shows your own, a project's own Samples tab shows everyone's contributions to it.",
-  },
-  {
-    title: "Invite collaborators",
-    body: "A new project starts visible only to you. Add people to it from its Members button and pick their role — Viewer (read-only), Editor (can add and edit), or Owner (can also manage membership).",
-  },
-  {
-    title: "Track lab & bioinformatic work",
-    body: "Build a workflow for however your lab actually works — extraction, library prep, sequencing, analysis — in a spreadsheet-style grid with custom columns.",
+    title: "Add samples",
+    body: "From the project's Samples tab (or the shared Database), add samples one at a time or import a CSV. Typing a species name offers GBIF suggestions and auto-fills its higher taxonomy.",
   },
   {
     title: "Map and explore",
     body: "Every sample with coordinates shows on the map. Color or shape markers by species, genus, or any other field, and toggle a GBIF occurrence overlay to spot sampling gaps.",
   },
   {
-    title: "Export your work",
-    body: "Download a CSV of any table, a PDF of a single section, or compile a whole project — including the map — into one report.",
+    title: "Invite collaborators",
+    body: "Add people to the project from its Members button and pick their role — Viewer (read-only), Editor (can add and edit), or Owner (can also manage membership).",
   },
   {
-    title: "Set up your profile",
-    body: "Add your name, title, institution, and a photo from the account menu (top right) — it's what your collaborators see and what shows up in the activity log.",
+    title: "Track lab & bioinformatic work",
+    body: "Build a workflow for however your lab actually works — extraction, library prep, sequencing, analysis — in a spreadsheet-style grid with custom columns, shared with everyone on the project.",
+  },
+  {
+    title: "Export your work",
+    body: "Download a CSV of any table, a PDF of a single section, or compile the whole project — including the map — into one report.",
   },
 ];
 
