@@ -9,6 +9,7 @@ export type Protocol = {
   id: string;
   created_at: string;
   updated_at: string;
+  owner_id: string;
   name: string;
   description: string | null;
   date_added: string;
@@ -31,25 +32,32 @@ export type NewProtocolInput = {
 
 export type UpdateProtocolInput = Partial<NewProtocolInput> & { content?: string };
 
-export async function listProtocols(): Promise<Protocol[]> {
+export async function listProtocols(ownerId: string): Promise<Protocol[]> {
   const { data, error } = await getSupabase()
     .from(TABLE)
     .select("*")
+    .eq("owner_id", ownerId)
     .order("date_added", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as Protocol[];
 }
 
-export async function getProtocol(id: string): Promise<Protocol | null> {
-  const { data, error } = await getSupabase().from(TABLE).select("*").eq("id", id).maybeSingle();
+export async function getProtocol(id: string, ownerId: string): Promise<Protocol | null> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select("*")
+    .eq("id", id)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
   if (error) throw new Error(error.message);
   return data as Protocol | null;
 }
 
-export async function createProtocol(input: NewProtocolInput): Promise<Protocol> {
+export async function createProtocol(input: NewProtocolInput, ownerId: string): Promise<Protocol> {
   const { data, error } = await getSupabase()
     .from(TABLE)
     .insert({
+      owner_id: ownerId,
       name: input.name.trim(),
       description: input.description?.trim() || null,
       // Omitted (rather than set to null) when blank, so the column's own
@@ -72,7 +80,8 @@ export async function createProtocol(input: NewProtocolInput): Promise<Protocol>
 // edit, whether that's a content save or a metadata change from the dialog.
 export async function updateProtocol(
   id: string,
-  input: UpdateProtocolInput
+  input: UpdateProtocolInput,
+  ownerId: string
 ): Promise<Protocol> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) patch.name = input.name.trim();
@@ -90,19 +99,22 @@ export async function updateProtocol(
     .from(TABLE)
     .update(patch)
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .select()
-    .single();
+    .maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) throw new Error("Protocol not found");
   return data as Protocol;
 }
 
 // Returns the deleted protocol's name so callers (the activity log) can
 // name it without a separate lookup.
-export async function deleteProtocol(id: string): Promise<string> {
+export async function deleteProtocol(id: string, ownerId: string): Promise<string> {
   const { data, error } = await getSupabase()
     .from(TABLE)
     .delete()
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .select("name")
     .maybeSingle();
   if (error) throw new Error(error.message);

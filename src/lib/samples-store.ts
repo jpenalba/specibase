@@ -34,10 +34,11 @@ export function sampleToRawRow(sample: SampleRecord, columns: FieldDef[]): RawRo
   return row;
 }
 
-export async function readSamples(): Promise<SampleRecord[]> {
+export async function readSamples(ownerId: string): Promise<SampleRecord[]> {
   const { data, error } = await getSupabase()
     .from(TABLE)
     .select("*")
+    .eq("owner_id", ownerId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -70,11 +71,13 @@ function attachCustomValues(
 
 // Deliberately not filtered by deleted_at — a soft-deleted sample's ID
 // stays reserved (see deleteSample) so a new sample can't collide with one
-// that might still come back via Undo.
-export async function existingIdentifiers(): Promise<Set<string>> {
+// that might still come back via Undo. Scoped to one owner, since Sample
+// IDs only need to be unique within one account's own database now.
+export async function existingIdentifiers(ownerId: string): Promise<Set<string>> {
   const { data, error } = await getSupabase()
     .from(TABLE)
-    .select("primary_identifier");
+    .select("primary_identifier")
+    .eq("owner_id", ownerId);
   if (error) throw new Error(error.message);
   return new Set((data ?? []).map((row) => row.primary_identifier as string));
 }
@@ -99,8 +102,8 @@ export type InsertResult =
   | { ok: true; sample: SampleRecord }
   | { ok: false; errors: string[] };
 
-export async function insertSample(row: RawRow): Promise<InsertResult> {
-  const existingIds = await existingIdentifiers();
+export async function insertSample(row: RawRow, ownerId: string): Promise<InsertResult> {
+  const existingIds = await existingIdentifiers(ownerId);
   const { errors } = validateRow(row, existingIds);
   if (errors.length > 0) {
     return { ok: false, errors };
@@ -114,6 +117,7 @@ export async function insertSample(row: RawRow): Promise<InsertResult> {
   for (const [key] of customEntries) delete rest[key];
 
   const insertValues: Record<string, string | number> = {
+    owner_id: ownerId,
     primary_identifier: primary_identifier.trim(),
     species: species.trim(),
     ...normalizeDatesForStorage(rest),
@@ -162,11 +166,16 @@ export async function insertSample(row: RawRow): Promise<InsertResult> {
 // caller that only knows about a subset of columns (e.g. an editable
 // table showing just the currently-visible optional fields) can't
 // accidentally wipe out a column it never displayed.
-export async function updateSample(id: string, rawRow: RawRow): Promise<InsertResult> {
+export async function updateSample(
+  id: string,
+  rawRow: RawRow,
+  ownerId: string
+): Promise<InsertResult> {
   const { data: current, error: fetchError } = await getSupabase()
     .from(TABLE)
     .select("primary_identifier")
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .maybeSingle();
   if (fetchError) return { ok: false, errors: [fetchError.message] };
   if (!current) return { ok: false, errors: ["Sample not found"] };
@@ -178,7 +187,7 @@ export async function updateSample(id: string, rawRow: RawRow): Promise<InsertRe
   // was submitted, and so the patch loop below never touches the column.
   const row = { ...rawRow, primary_identifier: current.primary_identifier as string };
 
-  const existingIds = await existingIdentifiers();
+  const existingIds = await existingIdentifiers(ownerId);
   existingIds.delete(current.primary_identifier as string);
   const { errors } = validateRow(row, existingIds);
   if (errors.length > 0) {
@@ -245,11 +254,12 @@ export type DeleteResult =
 // deleting an already-deleted sample reports "not found" rather than
 // silently no-op-ing. Returns the identifier of what was deleted so
 // callers (the activity log) can name it without a separate lookup.
-export async function deleteSample(id: string): Promise<DeleteResult> {
+export async function deleteSample(id: string, ownerId: string): Promise<DeleteResult> {
   const { data, error } = await getSupabase()
     .from(TABLE)
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .is("deleted_at", null)
     .select("primary_identifier")
     .maybeSingle();
@@ -260,11 +270,12 @@ export async function deleteSample(id: string): Promise<DeleteResult> {
 
 export type RestoreResult = { ok: true } | { ok: false; errors: string[] };
 
-export async function restoreSample(id: string): Promise<RestoreResult> {
+export async function restoreSample(id: string, ownerId: string): Promise<RestoreResult> {
   const { data, error } = await getSupabase()
     .from(TABLE)
     .update({ deleted_at: null })
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .not("deleted_at", "is", null)
     .select("id")
     .maybeSingle();
@@ -283,9 +294,10 @@ export type BulkImportResult = {
 };
 
 export async function insertSamplesBulk(
-  rows: RawRow[]
+  rows: RawRow[],
+  ownerId: string
 ): Promise<BulkImportResult> {
-  const seen = await existingIdentifiers();
+  const seen = await existingIdentifiers(ownerId);
   const duplicateIds = new Set<string>();
 
   for (const row of rows) {
@@ -311,7 +323,7 @@ export async function insertSamplesBulk(
   // Inserted one at a time (rather than a single bulk write) so each
   // row is independently validated and a bad row doesn't sink the batch.
   for (const [index, row] of rows.entries()) {
-    const result = await insertSample(applyGbifClassificationToRow(row, taxonomyByName));
+    const result = await insertSample(applyGbifClassificationToRow(row, taxonomyByName), ownerId);
     if (result.ok) {
       inserted.push(result.sample);
     } else {

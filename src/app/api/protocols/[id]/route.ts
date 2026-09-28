@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteProtocol, getProtocol, updateProtocol } from "@/lib/protocols-store";
 import { logActivity } from "@/lib/activity-log";
+import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
 import { parseProtocolFields } from "../parse-body";
 
@@ -9,8 +10,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
-    const protocol = await getProtocol(id);
+    const protocol = await getProtocol(id, auth.user.id);
     if (!protocol) {
       return NextResponse.json({ errors: ["Protocol not found"] }, { status: 404 });
     }
@@ -25,6 +28,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
     const body = await request.json();
 
@@ -47,7 +52,7 @@ export async function PATCH(
       return NextResponse.json({ errors: ["Upload a PDF for this protocol"] }, { status: 400 });
     }
 
-    const protocol = await updateProtocol(id, { name, ...fields });
+    const protocol = await updateProtocol(id, { name, ...fields }, auth.user.id);
     await logActivity("protocol", "updated", `Updated protocol "${protocol.name}"`);
     return NextResponse.json({ protocol });
   } catch (error) {
@@ -60,8 +65,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
-    const name = await deleteProtocol(id);
+    const name = await deleteProtocol(id, auth.user.id);
     await logActivity("protocol", "deleted", `Deleted protocol "${name}"`);
     return NextResponse.json({ ok: true });
   } catch (error) {

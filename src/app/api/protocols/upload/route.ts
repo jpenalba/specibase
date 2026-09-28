@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadProtocolPdf } from "@/lib/protocols-store";
 import { ALLOWED_PROTOCOL_FILE_TYPES, MAX_PROTOCOL_PDF_BYTES } from "@/lib/protocol-files";
+import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
 
 // Uploads a protocol's PDF ahead of the protocol record itself — the
@@ -8,6 +9,8 @@ import { apiError } from "@/lib/api-error";
 // the rest of the protocol's fields to POST /api/protocols.
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const formData = await request.formData();
     const file = formData.get("file");
 

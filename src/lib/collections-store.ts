@@ -13,6 +13,7 @@ const UNIQUE_VIOLATION = "23505";
 
 export type Collection = {
   id: string;
+  owner_id: string;
   name: string;
   created_at: string;
   description: string | null;
@@ -39,11 +40,15 @@ export type NewCollectionInput = {
 
 export type UpdateCollectionInput = Partial<NewCollectionInput>;
 
-export async function createCollection(input: NewCollectionInput): Promise<Collection> {
+export async function createCollection(
+  input: NewCollectionInput,
+  ownerId: string
+): Promise<Collection> {
   const name = input.name.trim();
   const { data, error } = await getSupabase()
     .from(COLLECTIONS_TABLE)
     .insert({
+      owner_id: ownerId,
       name,
       description: input.description?.trim() || null,
       // Omitted (rather than set to null) when blank, so the column's own
@@ -68,7 +73,8 @@ export async function createCollection(input: NewCollectionInput): Promise<Colle
 // Partial update — only fields present in `input` are changed.
 export async function updateCollection(
   id: string,
-  input: UpdateCollectionInput
+  input: UpdateCollectionInput,
+  ownerId: string
 ): Promise<Collection> {
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name.trim();
@@ -85,31 +91,35 @@ export async function updateCollection(
     .from(COLLECTIONS_TABLE)
     .update(patch)
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .select()
-    .single();
+    .maybeSingle();
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
       throw new Error(`A collection named "${patch.name}" already exists.`);
     }
     throw new Error(error.message);
   }
+  if (!data) throw new Error("Collection not found");
   return data as Collection;
 }
 
-export async function listCollections(): Promise<Collection[]> {
+export async function listCollections(ownerId: string): Promise<Collection[]> {
   const { data, error } = await getSupabase()
     .from(COLLECTIONS_TABLE)
     .select("*")
+    .eq("owner_id", ownerId)
     .order("name", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as Collection[];
 }
 
-export async function getCollection(id: string): Promise<Collection | null> {
+export async function getCollection(id: string, ownerId: string): Promise<Collection | null> {
   const { data, error } = await getSupabase()
     .from(COLLECTIONS_TABLE)
     .select("*")
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return (data as Collection) ?? null;
@@ -117,10 +127,27 @@ export async function getCollection(id: string): Promise<Collection | null> {
 
 export type CollectionSampleRef = { id: string; collection_id: string };
 
+// The caller's own collection ids — used to scope collection_samples
+// queries below to just this owner's collections, since collection_samples
+// itself has no owner_id column (it inherits access through its parent).
+async function ownedCollectionIds(ownerId: string): Promise<string[]> {
+  const { data, error } = await getSupabase()
+    .from(COLLECTIONS_TABLE)
+    .select("id")
+    .eq("owner_id", ownerId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => row.id as string);
+}
+
 // Just enough to compute a per-collection sample count without an N+1
 // query — mirrors listSampleProjectLinks() in @/lib/projects-store.
-export async function listCollectionSampleRefs(): Promise<CollectionSampleRef[]> {
-  const { data, error } = await getSupabase().from(SAMPLES_TABLE).select("id, collection_id");
+export async function listCollectionSampleRefs(ownerId: string): Promise<CollectionSampleRef[]> {
+  const ids = await ownedCollectionIds(ownerId);
+  if (ids.length === 0) return [];
+  const { data, error } = await getSupabase()
+    .from(SAMPLES_TABLE)
+    .select("id, collection_id")
+    .in("collection_id", ids);
   if (error) throw new Error(error.message);
   return (data ?? []) as CollectionSampleRef[];
 }
@@ -147,11 +174,17 @@ export async function listCollectionSamples(collectionId: string): Promise<Colle
   return (data ?? []) as CollectionSample[];
 }
 
-// Every sample across every collection, each still carrying its own
-// collection_id — used by the database map to draw one layer per
+// Every sample across every collection this owner has, each still carrying
+// its own collection_id — used by the database map to draw one layer per
 // collection without an N+1 fetch per collection.
-export async function listAllCollectionSamples(): Promise<CollectionSample[]> {
-  const { data, error } = await getSupabase().from(SAMPLES_TABLE).select("*").is("deleted_at", null);
+export async function listAllCollectionSamples(ownerId: string): Promise<CollectionSample[]> {
+  const ids = await ownedCollectionIds(ownerId);
+  if (ids.length === 0) return [];
+  const { data, error } = await getSupabase()
+    .from(SAMPLES_TABLE)
+    .select("*")
+    .in("collection_id", ids)
+    .is("deleted_at", null);
   if (error) throw new Error(error.message);
   return (data ?? []) as CollectionSample[];
 }

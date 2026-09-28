@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { insertSamplesBulk } from "@/lib/samples-store";
 import { linkSamplesToProject } from "@/lib/projects-store";
 import { logActivity } from "@/lib/activity-log";
+import { requireUser } from "@/lib/require-user";
 import { RawRow } from "@/lib/validation";
 import { apiError } from "@/lib/api-error";
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser();
+  if ("response" in auth) return auth.response;
+
   const body = await request.json();
   const rows: RawRow[] = Array.isArray(body?.rows) ? body.rows : [];
   const projectId: string | undefined = body?.projectId || undefined;
@@ -16,7 +20,7 @@ export async function POST(request: NextRequest) {
 
   let result;
   try {
-    result = await insertSamplesBulk(rows);
+    result = await insertSamplesBulk(rows, auth.user.id);
   } catch (error) {
     return apiError(error);
   }

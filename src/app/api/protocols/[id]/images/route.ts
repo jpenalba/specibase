@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { uploadProtocolImage } from "@/lib/protocols-store";
+import { getProtocol, uploadProtocolImage } from "@/lib/protocols-store";
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@/lib/image-types";
+import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
 
 export async function POST(
@@ -8,7 +9,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    if (!(await getProtocol(id, auth.user.id))) {
+      return NextResponse.json({ errors: ["Protocol not found"] }, { status: 404 });
+    }
     const formData = await request.formData();
     const file = formData.get("file");
 

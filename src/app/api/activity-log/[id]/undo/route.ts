@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActivityEntry, markActivityUndone, logActivity } from "@/lib/activity-log";
 import { restoreSample, deleteSample } from "@/lib/samples-store";
-import { restoreCollectionSample, deleteCollectionSample } from "@/lib/collections-store";
+import { restoreCollectionSample, deleteCollectionSample, getCollection } from "@/lib/collections-store";
+import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
 
 // Reverses one activity-log entry, dispatched on its undo_data.kind (see
@@ -13,6 +14,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
     const entry = await getActivityEntry(id);
     if (!entry) {
@@ -28,22 +31,28 @@ export async function POST(
 
     switch (data.kind) {
       case "restore_sample": {
-        const result = await restoreSample(data.sampleId);
+        const result = await restoreSample(data.sampleId, auth.user.id);
         if (!result.ok) return NextResponse.json({ errors: result.errors }, { status: 400 });
         break;
       }
       case "delete_samples": {
         for (const sampleId of data.sampleIds) {
-          await deleteSample(sampleId);
+          await deleteSample(sampleId, auth.user.id);
         }
         break;
       }
       case "restore_collection_sample": {
+        if (!(await getCollection(data.collectionId, auth.user.id))) {
+          return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
+        }
         const result = await restoreCollectionSample(data.collectionId, data.sampleId);
         if (!result.ok) return NextResponse.json({ errors: result.errors }, { status: 400 });
         break;
       }
       case "delete_collection_samples": {
+        if (!(await getCollection(data.collectionId, auth.user.id))) {
+          return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
+        }
         for (const sampleId of data.sampleIds) {
           await deleteCollectionSample(data.collectionId, sampleId);
         }

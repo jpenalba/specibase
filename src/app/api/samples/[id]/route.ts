@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateSample, deleteSample } from "@/lib/samples-store";
 import { logActivity } from "@/lib/activity-log";
+import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
 
 export async function PATCH(
@@ -8,9 +9,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
     const row = await request.json();
-    const result = await updateSample(id, row);
+    const result = await updateSample(id, row, auth.user.id);
     if (!result.ok) {
       return NextResponse.json({ errors: result.errors }, { status: 400 });
     }
@@ -26,8 +29,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
-    const result = await deleteSample(id);
+    const result = await deleteSample(id, auth.user.id);
     if (!result.ok) {
       return NextResponse.json({ errors: result.errors }, { status: 400 });
     }

@@ -44,8 +44,12 @@ create table if not exists samples (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
 
+  -- Personal data scoping (see supabase/migrations/0032_owner_scoping.sql)
+  -- — every sample belongs to exactly one account's own private Database.
+  owner_id uuid not null references profiles (id),
+
   -- required
-  primary_identifier text not null unique,
+  primary_identifier text not null,
   species text not null,
 
   -- location: either latitude+longitude or locality is required (not
@@ -86,15 +90,22 @@ create table if not exists samples (
   constraint samples_coords_paired check ((latitude is null) = (longitude is null)),
   constraint samples_location_required check (
     (latitude is not null and longitude is not null) or locality is not null
-  )
+  ),
+  -- Sample IDs only need to be unique within one account's own database,
+  -- not globally — same idea collection_samples already used below for an
+  -- external collection's own accession numbers.
+  unique (owner_id, primary_identifier)
 );
 
 -- Fully user-nameable "Other: specify" fields on samples — see
--- supabase/migrations/0028_sample_custom_columns.sql. Global (not scoped
--- to a workflow or project), unlike lab_workflow_custom_columns below.
+-- supabase/migrations/0028_sample_custom_columns.sql. Personal to the
+-- account that defined them (see 0032_owner_scoping.sql), same as samples
+-- themselves — unlike lab_workflow_custom_columns below, which is scoped
+-- to one project's workflow instead.
 create table if not exists sample_custom_columns (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
+  owner_id uuid not null references profiles (id),
 
   position integer not null,
   label text not null
@@ -155,8 +166,11 @@ create table if not exists sample_projects (
 -- table entirely rather than in `samples`.
 create table if not exists collections (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique,
+  name text not null,
   created_at timestamptz not null default now(),
+  -- Personal data scoping, same as samples above (see
+  -- supabase/migrations/0032_owner_scoping.sql).
+  owner_id uuid not null references profiles (id),
 
   description text,
   date_added date not null default current_date,
@@ -166,7 +180,8 @@ create table if not exists collections (
   -- Groups this collection into a folder on the database map's layer
   -- panel — see supabase/migrations/0017_collection_types.sql.
   collection_type text not null default 'other'
-    check (collection_type in ('field', 'museum', 'collaborator', 'other'))
+    check (collection_type in ('field', 'museum', 'collaborator', 'other')),
+  unique (owner_id, name)
 );
 
 create table if not exists collection_samples (
@@ -548,6 +563,9 @@ create table if not exists protocols (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  -- Personal data scoping, same as samples/collections above (see
+  -- supabase/migrations/0032_owner_scoping.sql).
+  owner_id uuid not null references profiles (id),
 
   name text not null,
   description text,

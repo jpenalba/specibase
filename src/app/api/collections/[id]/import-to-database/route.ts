@@ -3,6 +3,7 @@ import { getCollection, listCollectionSamples } from "@/lib/collections-store";
 import { sampleToRawRow, insertSamplesBulk } from "@/lib/samples-store";
 import { ALL_FIELDS } from "@/lib/fields";
 import { logActivity } from "@/lib/activity-log";
+import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
 
 // Copies every sample currently in this collection into the main
@@ -17,19 +18,24 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const collection = await getCollection(id, auth.user.id);
+    if (!collection) {
+      return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
+    }
     const samples = await listCollectionSamples(id);
     if (samples.length === 0) {
       return NextResponse.json({ errors: ["This collection has no samples to add"] }, { status: 400 });
     }
     const rows = samples.map((sample) => sampleToRawRow(sample, ALL_FIELDS));
-    const result = await insertSamplesBulk(rows);
+    const result = await insertSamplesBulk(rows, auth.user.id);
     if (result.inserted.length > 0) {
-      const collection = await getCollection(id);
       await logActivity(
         "sample",
         "created",
-        `Added ${result.inserted.length} sample(s) from collection "${collection?.name ?? "collection"}" to the main database`,
+        `Added ${result.inserted.length} sample(s) from collection "${collection.name}" to the main database`,
         { kind: "delete_samples", sampleIds: result.inserted.map((s) => s.id) }
       );
     }

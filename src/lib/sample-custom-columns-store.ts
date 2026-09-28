@@ -14,6 +14,7 @@ const KEY_PREFIX = "custom:";
 export type SampleCustomColumn = {
   id: string;
   created_at: string;
+  owner_id: string;
   position: number;
   label: string;
 };
@@ -41,10 +42,11 @@ export function customColumnToFieldDef(column: SampleCustomColumn): FieldDef {
   return { key: customColumnKey(column.id), label: column.label, type: "text" };
 }
 
-export async function listCustomColumns(): Promise<SampleCustomColumn[]> {
+export async function listCustomColumns(ownerId: string): Promise<SampleCustomColumn[]> {
   const { data, error } = await getSupabase()
     .from(COLUMNS_TABLE)
     .select("*")
+    .eq("owner_id", ownerId)
     .order("position", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as SampleCustomColumn[];
@@ -52,31 +54,41 @@ export async function listCustomColumns(): Promise<SampleCustomColumn[]> {
 
 // Appended after whatever's already there, same as the lab/bio workflows'
 // own custom columns.
-export async function addCustomColumn(label: string): Promise<SampleCustomColumn> {
-  const existing = await listCustomColumns();
+export async function addCustomColumn(label: string, ownerId: string): Promise<SampleCustomColumn> {
+  const existing = await listCustomColumns(ownerId);
   const { data, error } = await getSupabase()
     .from(COLUMNS_TABLE)
-    .insert({ label: label.trim(), position: existing.length })
+    .insert({ owner_id: ownerId, label: label.trim(), position: existing.length })
     .select()
     .single();
   if (error) throw new Error(error.message);
   return data as SampleCustomColumn;
 }
 
-export async function renameCustomColumn(id: string, label: string): Promise<SampleCustomColumn> {
+export async function renameCustomColumn(
+  id: string,
+  label: string,
+  ownerId: string
+): Promise<SampleCustomColumn> {
   const { data, error } = await getSupabase()
     .from(COLUMNS_TABLE)
     .update({ label: label.trim() })
     .eq("id", id)
+    .eq("owner_id", ownerId)
     .select()
-    .single();
+    .maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) throw new Error("Custom column not found");
   return data as SampleCustomColumn;
 }
 
 // Cascades to that column's values across every sample.
-export async function deleteCustomColumn(id: string): Promise<void> {
-  const { error } = await getSupabase().from(COLUMNS_TABLE).delete().eq("id", id);
+export async function deleteCustomColumn(id: string, ownerId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from(COLUMNS_TABLE)
+    .delete()
+    .eq("id", id)
+    .eq("owner_id", ownerId);
   if (error) throw new Error(error.message);
 }
 

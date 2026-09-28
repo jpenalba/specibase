@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateCollection } from "@/lib/collections-store";
 import { logActivity } from "@/lib/activity-log";
+import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
 import { parseCollectionFields } from "../parse-body";
 
@@ -9,6 +10,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
     const body = await request.json();
 
@@ -28,7 +31,7 @@ export async function PATCH(
       return NextResponse.json({ errors: ["Date added is required"] }, { status: 400 });
     }
 
-    const collection = await updateCollection(id, { name, ...fields });
+    const collection = await updateCollection(id, { name, ...fields }, auth.user.id);
     await logActivity("collection", "updated", `Updated collection "${collection.name}"`);
     return NextResponse.json({ collection });
   } catch (error) {

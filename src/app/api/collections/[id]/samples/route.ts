@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCollection, listCollectionSamples, insertCollectionSamplesBulk } from "@/lib/collections-store";
 import { logActivity } from "@/lib/activity-log";
+import { requireUser } from "@/lib/require-user";
 import { RawRow } from "@/lib/validation";
 import { apiError } from "@/lib/api-error";
 
@@ -9,7 +10,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const collection = await getCollection(id, auth.user.id);
+    if (!collection) {
+      return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
+    }
     const samples = await listCollectionSamples(id);
     return NextResponse.json({ samples });
   } catch (error) {
@@ -22,7 +29,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if ("response" in auth) return auth.response;
     const { id } = await params;
+    const collection = await getCollection(id, auth.user.id);
+    if (!collection) {
+      return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
+    }
     const body = await request.json();
     const rows: RawRow[] = Array.isArray(body?.rows) ? body.rows : [];
     if (rows.length === 0) {
@@ -30,8 +43,7 @@ export async function POST(
     }
     const result = await insertCollectionSamplesBulk(id, rows);
     if (result.inserted.length > 0) {
-      const collection = await getCollection(id);
-      const name = collection?.name ?? "collection";
+      const name = collection.name;
       if (result.inserted.length === 1) {
         await logActivity(
           "collection_sample",
