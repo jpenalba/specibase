@@ -176,7 +176,14 @@ create table if not exists projects (
   marker_shape text check (marker_shape in ('circle', 'square', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star')),
   -- Whether the map hides samples with no value for marker_style_field
   -- instead of always showing them — see 0029_marker_hide_no_value.sql.
-  marker_hide_no_value boolean not null default false
+  marker_hide_no_value boolean not null default false,
+
+  -- Whether this project keeps an activity log at all — an Owner-only
+  -- switch (see AUTH_AND_PERMISSIONS_PLAN.md phase 4 and
+  -- 0038_per_user_project_activity_log.sql). Does not affect whether an
+  -- action is recorded at all, only whether it's tagged into this
+  -- project's own Logs view — see src/lib/activity-log.ts.
+  log_enabled boolean not null default true
 );
 
 -- Phase 3 of AUTH_AND_PERMISSIONS_PLAN.md: every project gets a membership
@@ -657,14 +664,13 @@ create table if not exists activity_log (
   -- "precomputed, not joined" approach as summary above. Null means the
   -- entry predates this (or logActivity couldn't resolve a signed-in
   -- account at the time).
-  performed_by text
-);
+  performed_by text,
 
--- Single-row (id always 1) table of app-wide settings — no per-user auth,
--- so this is one shared switch rather than a per-user preference.
-create table if not exists app_settings (
-  id smallint primary key default 1 check (id = 1),
-  activity_logging_enabled boolean not null default true
+  -- The real FK counterpart to performed_by — see
+  -- supabase/migrations/0038_per_user_project_activity_log.sql. Lets an
+  -- account's own cross-project activity actually be queried, not just
+  -- displayed. set null on delete, same reasoning as project_id above.
+  user_id uuid references profiles (id) on delete set null
 );
 
 create index if not exists bio_workflow_steps_workflow_id_idx on bio_workflow_steps (workflow_id);
@@ -717,9 +723,6 @@ alter table project_marker_styles enable row level security;
 alter table protocols enable row level security;
 alter table protocol_projects enable row level security;
 alter table activity_log enable row level security;
-alter table app_settings enable row level security;
-
-insert into app_settings (id) values (1) on conflict (id) do nothing;
 
 -- Public bucket for images inserted into a project's Background markdown
 -- (see src/app/api/projects/[id]/background/images) — public because the

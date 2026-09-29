@@ -66,10 +66,10 @@ export default function LogsPage() {
     setEnabled(next);
     setSavingToggle(true);
     try {
-      const res = await fetch("/api/activity-log/settings", {
+      const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: next }),
+        body: JSON.stringify({ log_enabled: next }),
       });
       if (!res.ok) setEnabled(!next);
     } catch {
@@ -114,8 +114,10 @@ export default function LogsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Logs</h1>
           <p className="text-sm text-muted-foreground">
-            A running record of changes made in Specibase — samples added or edited, projects
-            created, and so on. Recent deletes and imports can be undone below.
+            A running record of your own changes in Specibase — samples added or edited, projects
+            created, and so on, across your private data and every project you&apos;re on. Recent
+            deletes and imports can be undone below. A project&apos;s own Logs tab shows that
+            project&apos;s shared slice of this to everyone on it.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -125,7 +127,7 @@ export default function LogsPage() {
             onCheckedChange={toggleEnabled}
             disabled={savingToggle}
           />
-          <Label htmlFor="logging-enabled">Log changes</Label>
+          <Label htmlFor="logging-enabled">Log my changes</Label>
         </div>
       </div>
 
@@ -147,7 +149,8 @@ export default function LogsPage() {
 
       {!enabled && !error && (
         <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-          Logging is turned off — new changes won&apos;t be recorded until you turn it back on.
+          Logging is turned off for your account — new changes won&apos;t be recorded until you
+          turn it back on.
         </div>
       )}
 

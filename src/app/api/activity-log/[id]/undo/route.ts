@@ -63,7 +63,13 @@ export async function POST(
     }
 
     await markActivityUndone(id);
-    await logActivity(entry.entity_type, "undone", `Undid: ${entry.summary}`);
+    await logActivity(
+      entry.entity_type,
+      "undone",
+      `Undid: ${entry.summary}`,
+      undefined,
+      entry.project_id ?? undefined
+    );
     return NextResponse.json({ ok: true });
   } catch (error) {
     return apiError(error);

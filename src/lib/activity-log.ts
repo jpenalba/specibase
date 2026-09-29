@@ -2,7 +2,7 @@ import { getSupabase } from "./supabase";
 import { getCurrentUser } from "./current-user";
 
 const LOG_TABLE = "activity_log";
-const SETTINGS_TABLE = "app_settings";
+const PROJECTS_TABLE = "projects";
 
 // Every kind of undo this app currently knows how to reverse — dispatched
 // on in /api/activity-log/[id]/undo. Adding a new undoable action means
@@ -23,45 +23,56 @@ export type ActivityLogEntry = {
   undone_at: string | null;
   project_id: string | null;
   performed_by: string | null;
+  user_id: string | null;
 };
 
-// Fails open (treated as enabled) if the settings row is missing or the
+// Fails open (treated as enabled) if the project row is missing or the
 // migration hasn't been run yet — matches the column's own default, and
-// means a not-yet-migrated instance behaves the same as a freshly
-// migrated one rather than silently logging nothing.
-export async function isActivityLoggingEnabled(): Promise<boolean> {
+// means a not-yet-migrated instance behaves the same as a freshly migrated
+// one rather than silently untagging every project-scoped entry.
+export async function isProjectLoggingEnabled(projectId: string): Promise<boolean> {
   const { data, error } = await getSupabase()
-    .from(SETTINGS_TABLE)
-    .select("activity_logging_enabled")
-    .eq("id", 1)
+    .from(PROJECTS_TABLE)
+    .select("log_enabled")
+    .eq("id", projectId)
     .maybeSingle();
   if (error || !data) return true;
-  return data.activity_logging_enabled as boolean;
+  return data.log_enabled as boolean;
 }
 
-export async function setActivityLoggingEnabled(enabled: boolean): Promise<void> {
+// Owner-only — enforced by the caller (requireProjectRole(..., "owner")),
+// not here.
+export async function setProjectLoggingEnabled(projectId: string, enabled: boolean): Promise<void> {
   const { error } = await getSupabase()
-    .from(SETTINGS_TABLE)
-    .update({ activity_logging_enabled: enabled })
-    .eq("id", 1);
+    .from(PROJECTS_TABLE)
+    .update({ log_enabled: enabled })
+    .eq("id", projectId);
   if (error) throw new Error(error.message);
 }
 
-// Records one line in the activity feed. A no-op when logging is turned
-// off, and never throws — logging is a side effect of an action that has
-// already succeeded by the time this is called, so a logging failure
-// (or a not-yet-migrated database) must never surface as if the action
-// itself failed. undoData is omitted for anything that isn't reversible
-// (most entries — a project rename, say) — its presence is what puts an
-// "Undo" button on this entry in the Logs page. projectId is omitted for
-// anything that isn't clearly scoped to one project (most entries today —
-// a sample edit from the shared Database, say); its presence is what
-// makes an entry show up in that project's own Logs tab. Resolves the
-// acting account itself (username, falling back to email) rather than
-// taking it as a parameter — every call site already runs inside an
-// authenticated request, so there's nothing for callers to thread through,
-// at the cost of one extra lookup on top of whatever requireUser() already
-// did in the route.
+// Records one line in the activity feed. Never throws — logging is a side
+// effect of an action that has already succeeded by the time this is
+// called, so a logging failure (or a not-yet-migrated database) must never
+// surface as if the action itself failed.
+//
+// Two independent switches gate this, per AUTH_AND_PERMISSIONS_PLAN.md's
+// phase 4:
+// - The acting account's own personal toggle (profiles.log_enabled, via
+//   getCurrentUser().logEnabled) — off means nothing they do gets recorded
+//   at all, anywhere, so this returns early with no insert. There's no
+//   caller-supplied user id to fall back on: every call site already runs
+//   inside an authenticated request, so whoever's signed in *is* the actor.
+// - The target project's own toggle (projects.log_enabled), checked only
+//   when `projectId` is given — off doesn't stop the entry from being
+//   recorded (it still belongs in the actor's own personal log), it just
+//   isn't tagged with that project, so it won't show up on that project's
+//   own Logs tab.
+//
+// undoData is omitted for anything that isn't reversible (most entries — a
+// project rename, say) — its presence is what puts an "Undo" button on
+// this entry in the Logs page. projectId is omitted for anything that
+// isn't clearly scoped to one project (most entries today — a sample edit
+// from the shared Database, say).
 export async function logActivity(
   entityType: string,
   action: string,
@@ -70,8 +81,14 @@ export async function logActivity(
   projectId?: string
 ): Promise<void> {
   try {
-    if (!(await isActivityLoggingEnabled())) return;
     const user = await getCurrentUser();
+    if (!user || !user.logEnabled) return;
+
+    let taggedProjectId = projectId ?? null;
+    if (taggedProjectId && !(await isProjectLoggingEnabled(taggedProjectId))) {
+      taggedProjectId = null;
+    }
+
     await getSupabase()
       .from(LOG_TABLE)
       .insert({
@@ -79,18 +96,25 @@ export async function logActivity(
         action,
         summary,
         undo_data: undoData ?? null,
-        project_id: projectId ?? null,
-        performed_by: user ? (user.username ?? user.email) : null,
+        project_id: taggedProjectId,
+        user_id: user.id,
+        performed_by: user.username ?? user.email,
       });
   } catch {
     // Swallow — see above.
   }
 }
 
-export async function listActivity(limit = 300): Promise<ActivityLogEntry[]> {
+// An account's own cross-cutting personal log — everything they've done,
+// across their private data and every project they touch, regardless of
+// any project's own toggle (that only gates the *project's* Logs view, not
+// this one). Visible only to that account (see the /api/activity-log
+// route).
+export async function listActivityForUser(userId: string, limit = 300): Promise<ActivityLogEntry[]> {
   const { data, error } = await getSupabase()
     .from(LOG_TABLE)
     .select("*")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);

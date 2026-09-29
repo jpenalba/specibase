@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ActivityLogEntry } from "@/lib/activity-log";
+import { useProjectRole } from "@/lib/project-role-context";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 // Same day-grouping presentation as the global /logs page, scoped to just
@@ -31,11 +34,14 @@ function timeOfDay(iso: string): string {
 
 export default function ProjectLogsPage() {
   const { id: projectId } = useParams<{ id: string }>();
+  const role = useProjectRole();
+  const isOwner = role === "owner";
 
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [savingToggle, setSavingToggle] = useState(false);
 
   const load = useCallback(() => {
     fetch(`/api/projects/${projectId}/activity-log`)
@@ -57,6 +63,24 @@ export default function ProjectLogsPage() {
     load();
   }, [load]);
 
+  async function toggleEnabled() {
+    const next = !enabled;
+    setEnabled(next);
+    setSavingToggle(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/activity-log`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (!res.ok) setEnabled(!next);
+    } catch {
+      setEnabled(!next);
+    } finally {
+      setSavingToggle(false);
+    }
+  }
+
   const groups: { key: string; heading: string; entries: ActivityLogEntry[] }[] = [];
   for (const entry of entries) {
     const key = dayKey(entry.created_at);
@@ -70,16 +94,30 @@ export default function ProjectLogsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Logs</h1>
-        <p className="text-sm text-muted-foreground">
-          A running record of changes made within this project. See the app-wide{" "}
-          <a href="/logs" className="underline">
-            Logs
-          </a>{" "}
-          page for everything else, including sample and collection edits made from the shared
-          Database.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Logs</h1>
+          <p className="text-sm text-muted-foreground">
+            A running record of changes made within this project, visible to every member. See
+            your own{" "}
+            <a href="/logs" className="underline">
+              Logs
+            </a>{" "}
+            page for everything else you&apos;ve done, including sample and collection edits made
+            from the shared Database.
+          </p>
+        </div>
+        {isOwner && (
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="project-logging-enabled"
+              checked={enabled}
+              onCheckedChange={toggleEnabled}
+              disabled={savingToggle}
+            />
+            <Label htmlFor="project-logging-enabled">Keep this project&apos;s log</Label>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -94,8 +132,9 @@ export default function ProjectLogsPage() {
 
       {!enabled && !error && (
         <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-          Logging is turned off app-wide — new changes won&apos;t be recorded until it&apos;s
-          turned back on from the Logs page.
+          This project&apos;s log is turned off — new changes won&apos;t show up here
+          {isOwner ? " until you turn it back on above" : " until an Owner turns it back on"}. Each
+          member&apos;s own actions are still recorded on their personal Logs page either way.
         </div>
       )}
 

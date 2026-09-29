@@ -50,6 +50,7 @@ export async function PATCH(request: NextRequest) {
       department: stringField("department"),
       position: stringField("position"),
       lab_group: stringField("lab_group"),
+      log_enabled: typeof body.log_enabled === "boolean" ? body.log_enabled : undefined,
     });
     if (!result.ok) {
       return NextResponse.json({ errors: result.errors }, { status: 400 });

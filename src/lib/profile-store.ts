@@ -27,6 +27,10 @@ export type Profile = {
   position: string | null;
   lab_group: string | null;
   avatar_url: string | null;
+  // The personal "log my activity" switch — see AUTH_AND_PERMISSIONS_PLAN.md
+  // phase 4. Off means nothing this account does gets recorded anywhere,
+  // full stop (src/lib/activity-log.ts's logActivity checks this first).
+  log_enabled: boolean;
 };
 
 export type ProfileUpdateInput = {
@@ -38,6 +42,7 @@ export type ProfileUpdateInput = {
   department?: string | null;
   position?: string | null;
   lab_group?: string | null;
+  log_enabled?: boolean;
 };
 
 export async function getProfile(userId: string): Promise<Profile | null> {
@@ -55,7 +60,7 @@ export async function updateProfile(
   userId: string,
   input: ProfileUpdateInput
 ): Promise<ProfileUpdateResult> {
-  const patch: Record<string, string | null> = {};
+  const patch: Record<string, string | boolean | null> = {};
   if (input.title !== undefined) patch.title = input.title;
   if (input.last_name !== undefined) patch.last_name = input.last_name?.trim() || null;
   if (input.first_name !== undefined) patch.first_name = input.first_name?.trim() || null;
@@ -63,6 +68,7 @@ export async function updateProfile(
   if (input.department !== undefined) patch.department = input.department?.trim() || null;
   if (input.position !== undefined) patch.position = input.position?.trim() || null;
   if (input.lab_group !== undefined) patch.lab_group = input.lab_group?.trim() || null;
+  if (input.log_enabled !== undefined) patch.log_enabled = input.log_enabled;
   if (input.username !== undefined) {
     const trimmed = input.username?.trim() || null;
     if (trimmed && !USERNAME_PATTERN.test(trimmed)) {

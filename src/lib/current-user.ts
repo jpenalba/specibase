@@ -7,6 +7,11 @@ export type CurrentUser = {
   username: string | null;
   displayName: string | null;
   avatarUrl: string | null;
+  // The account's own "log my activity" switch — defaults to true (the
+  // column's own default) when there's no profile row to read it from, so
+  // a not-yet-migrated or profile-less account still gets logged, matching
+  // the app's existing behavior. See src/lib/activity-log.ts.
+  logEnabled: boolean;
 };
 
 // The start of the DAL the auth plan calls for — right now this only
@@ -27,5 +32,6 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     username: profile?.username ?? null,
     displayName: profile ? formatDisplayName(profile) : null,
     avatarUrl: profile?.avatar_url ?? null,
+    logEnabled: profile?.log_enabled ?? true,
   };
 }

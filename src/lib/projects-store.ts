@@ -38,6 +38,10 @@ export type Project = {
   // Whether the map hides samples with no value for marker_style_field
   // instead of always showing them in a "(No value)" bucket.
   marker_hide_no_value: boolean;
+  // Whether this project keeps an activity log — an Owner-only switch, set
+  // via its own dedicated route rather than the general update flow below
+  // (see src/lib/activity-log.ts's setProjectLoggingEnabled).
+  log_enabled: boolean;
 };
 
 export type NewProjectInput = {
