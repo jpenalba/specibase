@@ -98,6 +98,16 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+// Excludes static files served straight out of /public (the Specibase
+// logo, the focal-group category icons under /logos) along with Next's own
+// _next/static, _next/image, and favicon.ico — none of these are pages or
+// API routes, so gating them behind auth only ever breaks a signed-out
+// visitor's first look at the app (the login page's own logo, caught via
+// exactly this: it loaded in a browser that had it cached from an earlier
+// signed-in visit, but 404'd into a login-page redirect in a browser that
+// didn't, since an <img> tag can't render an HTML redirect response as an
+// image). Matches by file extension rather than listing every path,
+// everything under /public that this app actually serves is an image.
 export const config = {
-  matcher: "/((?!_next/static|_next/image|favicon.ico).*)",
+  matcher: "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)",
 };
