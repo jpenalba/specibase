@@ -29,7 +29,7 @@ import { createServerClient } from "@supabase/ssr";
 // through unauthenticated (today's actual behavior) rather than the whole
 // site breaking the moment this code ships, before the one-time manual
 // Supabase setup (see .env.example) is done.
-const PUBLIC_PATHS = ["/login", "/forgot-password"];
+const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password"];
 // API routes reachable while signed out — just the one the login form
 // itself needs (turning a username into an email before it can even call
 // Supabase Auth). Checked separately from PUBLIC_PATHS since, unlike
