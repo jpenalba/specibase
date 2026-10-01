@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabase";
 import { findProfileByIdentifier, formatDisplayName } from "./profile-store";
+import { inviteOrResendEmail, isAccountConfirmed } from "./account-invites";
 
 const TABLE = "project_members";
 
@@ -134,7 +135,7 @@ export async function addMember(
 }
 
 export type AddMemberResult =
-  | { ok: true; member: ProjectMember; invited: boolean }
+  | { ok: true; member: ProjectMember; invited: boolean; resent: boolean }
   | { ok: false; errors: string[] };
 
 // Looks the identifier up as an existing account first (username or
@@ -151,33 +152,30 @@ export async function addMemberByIdentifier(
 ): Promise<AddMemberResult> {
   const trimmed = identifier.trim();
   if (!trimmed) return { ok: false, errors: ["An email or username is required"] };
+  const isEmail = trimmed.includes("@");
 
   const existing = await findProfileByIdentifier(trimmed);
-  if (existing) {
+  // A profile row exists from the moment someone's invited (the trigger
+  // fires on auth.users insert), not just once they've actually accepted —
+  // so finding one by email doesn't by itself mean there's nothing left to
+  // do. Only short-circuit to "just add them" once the account is actually
+  // confirmed; a still-pending invite falls through to invite/resend below
+  // like a brand-new email would. A username match is never ambiguous this
+  // way — only a signed-in (i.e. confirmed) account can have set one.
+  if (existing && (!isEmail || (await isAccountConfirmed(existing.id)))) {
     const member = await addMember(projectId, existing.id, role);
-    return { ok: true, member, invited: false };
+    return { ok: true, member, invited: false, resent: false };
   }
 
-  if (!trimmed.includes("@")) {
+  if (!isEmail) {
     return { ok: false, errors: [`No account found for username "${trimmed}"`] };
   }
 
-  // Without redirectTo, Supabase sends the invite link to whatever Site URL
-  // is configured in its own dashboard — easy to leave pointed at
-  // localhost, or at nothing, and either way the invited person lands
-  // somewhere that was never built to receive them. /reset-password
-  // already handles "a Supabase link just dropped me here with a fresh
-  // session" generically (see its own comment) — an invite link
-  // establishes a session the same way a recovery link does, so reusing it
-  // here needs no new page.
-  const { data, error } = await getSupabase().auth.admin.inviteUserByEmail(trimmed, {
-    redirectTo: `${siteUrl}/reset-password`,
-  });
-  if (error) return { ok: false, errors: [error.message] };
-  if (!data.user) return { ok: false, errors: ["Couldn't send the invite"] };
+  const result = await inviteOrResendEmail(trimmed, `${siteUrl}/reset-password`);
+  if (!result.ok) return { ok: false, errors: result.errors };
 
-  const member = await addMember(projectId, data.user.id, role);
-  return { ok: true, member, invited: true };
+  const member = await addMember(projectId, result.userId, role);
+  return { ok: true, member, invited: true, resent: result.resent };
 }
 
 export type MemberChangeResult = { ok: true } | { ok: false; errors: string[] };

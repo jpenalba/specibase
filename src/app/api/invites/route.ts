@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { inviteOrResendEmail } from "@/lib/account-invites";
 import { requireUser } from "@/lib/require-user";
 import { apiError } from "@/lib/api-error";
 
@@ -20,18 +20,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ errors: ["A valid email is required"] }, { status: 400 });
     }
 
-    // See addMemberByIdentifier in project-members-store.ts for why
-    // redirectTo matters here — without it, Supabase sends the invite link
-    // to whatever Site URL its own dashboard has configured, which is easy
-    // to leave wrong, rather than to a page this app actually built to
-    // receive an invited account.
-    const { error } = await getSupabase().auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${new URL(request.url).origin}/reset-password`,
-    });
-    if (error) {
-      return NextResponse.json({ errors: [error.message] }, { status: 400 });
+    // See addMemberByIdentifier in project-members-store.ts / the comment
+    // on inviteOrResendEmail for why redirectTo matters here and why this
+    // isn't a plain inviteUserByEmail call — without either, re-sending to
+    // someone who hasn't gotten around to accepting yet errors as if
+    // they'd already registered.
+    const result = await inviteOrResendEmail(email, `${new URL(request.url).origin}/reset-password`);
+    if (!result.ok) {
+      return NextResponse.json({ errors: result.errors }, { status: 400 });
     }
-    return NextResponse.json({ ok: true }, { status: 201 });
+    return NextResponse.json({ ok: true, resent: result.resent }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }

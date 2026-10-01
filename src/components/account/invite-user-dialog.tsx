@@ -29,6 +29,7 @@ export function InviteUserDialog({
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
 
   function handleOpenChange(next: boolean) {
     onOpenChange(next);
@@ -36,6 +37,7 @@ export function InviteUserDialog({
       setEmail("");
       setErrors([]);
       setSentTo(null);
+      setResent(false);
     }
   }
 
@@ -57,6 +59,7 @@ export function InviteUserDialog({
         return;
       }
       setSentTo(trimmed);
+      setResent(Boolean(data.resent));
       setEmail("");
     } catch {
       setErrors(["Couldn't reach the server."]);
@@ -78,7 +81,9 @@ export function InviteUserDialog({
 
         {sentTo && (
           <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-            Invite sent to {sentTo}.
+            {resent
+              ? `Re-sent the invite to ${sentTo} — they hadn't accepted it yet.`
+              : `Invite sent to ${sentTo}.`}
           </div>
         )}
 

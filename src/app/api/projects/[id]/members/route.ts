@@ -57,13 +57,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await logActivity(
       "project",
       "member_added",
-      result.invited
-        ? `Invited ${identifier} to this project as ${role}`
-        : `Added ${identifier} to this project as ${role}`,
+      result.resent
+        ? `Re-invited ${identifier} to this project as ${role}`
+        : result.invited
+          ? `Invited ${identifier} to this project as ${role}`
+          : `Added ${identifier} to this project as ${role}`,
       undefined,
       id
     );
-    return NextResponse.json({ member: result.member, invited: result.invited }, { status: 201 });
+    return NextResponse.json(
+      { member: result.member, invited: result.invited, resent: result.resent },
+      { status: 201 }
+    );
   } catch (error) {
     return apiError(error);
   }

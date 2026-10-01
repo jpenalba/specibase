@@ -89,7 +89,13 @@ export function MembersDialog({
         setError(data.errors?.join(" ") ?? "Couldn't add that person.");
         return;
       }
-      setAddNotice(data.invited ? `Invited ${identifier} by email.` : `Added ${identifier}.`);
+      setAddNotice(
+        data.resent
+          ? `Re-sent the invite to ${identifier} — they hadn't accepted it yet.`
+          : data.invited
+            ? `Invited ${identifier} by email.`
+            : `Added ${identifier}.`
+      );
       setIdentifier("");
       load();
     } catch {
