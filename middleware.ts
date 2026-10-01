@@ -35,7 +35,7 @@ const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password"];
 // Supabase Auth). Checked separately from PUBLIC_PATHS since, unlike
 // /login, an already-signed-in caller hitting this shouldn't get bounced
 // to "/" — it's a plain lookup, not a page.
-const PUBLIC_API_PATHS = ["/api/auth/resolve-identifier"];
+const PUBLIC_API_PATHS = ["/api/auth/resolve-identifier", "/api/signup"];
 // Reachable both signed out AND signed in, unlike PUBLIC_PATHS — this is
 // where a password-reset email's link lands. That link carries a fresh
 // "recovery" session the browser only establishes client-side once the
