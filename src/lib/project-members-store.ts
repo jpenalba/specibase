@@ -146,7 +146,8 @@ export type AddMemberResult =
 export async function addMemberByIdentifier(
   projectId: string,
   identifier: string,
-  role: ProjectRole
+  role: ProjectRole,
+  siteUrl: string
 ): Promise<AddMemberResult> {
   const trimmed = identifier.trim();
   if (!trimmed) return { ok: false, errors: ["An email or username is required"] };
@@ -161,7 +162,17 @@ export async function addMemberByIdentifier(
     return { ok: false, errors: [`No account found for username "${trimmed}"`] };
   }
 
-  const { data, error } = await getSupabase().auth.admin.inviteUserByEmail(trimmed);
+  // Without redirectTo, Supabase sends the invite link to whatever Site URL
+  // is configured in its own dashboard — easy to leave pointed at
+  // localhost, or at nothing, and either way the invited person lands
+  // somewhere that was never built to receive them. /reset-password
+  // already handles "a Supabase link just dropped me here with a fresh
+  // session" generically (see its own comment) — an invite link
+  // establishes a session the same way a recovery link does, so reusing it
+  // here needs no new page.
+  const { data, error } = await getSupabase().auth.admin.inviteUserByEmail(trimmed, {
+    redirectTo: `${siteUrl}/reset-password`,
+  });
   if (error) return { ok: false, errors: [error.message] };
   if (!data.user) return { ok: false, errors: ["Couldn't send the invite"] };
 

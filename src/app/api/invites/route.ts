@@ -20,7 +20,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ errors: ["A valid email is required"] }, { status: 400 });
     }
 
-    const { error } = await getSupabase().auth.admin.inviteUserByEmail(email);
+    // See addMemberByIdentifier in project-members-store.ts for why
+    // redirectTo matters here — without it, Supabase sends the invite link
+    // to whatever Site URL its own dashboard has configured, which is easy
+    // to leave wrong, rather than to a page this app actually built to
+    // receive an invited account.
+    const { error } = await getSupabase().auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${new URL(request.url).origin}/reset-password`,
+    });
     if (error) {
       return NextResponse.json({ errors: [error.message] }, { status: 400 });
     }
