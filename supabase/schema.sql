@@ -20,6 +20,13 @@ create table if not exists profiles (
   display_name text,
   log_enabled boolean not null default true,
   created_at timestamptz not null default now(),
+  -- Set only once a password has actually been saved via /reset-password
+  -- (see 0039_profile_registered_at.sql) — the authoritative "has this
+  -- account actually finished registering" signal used to decide whether
+  -- an invite can be re-sent (src/lib/account-invites.ts), since
+  -- Supabase's own email_confirmed_at flips true the moment an invite
+  -- link is merely clicked, before a password is ever set.
+  registered_at timestamptz,
 
   -- Editable profile fields — see the account dropdown's Profile section
   -- (supabase/migrations/0033_profile_fields.sql). display_name above is

@@ -1,6 +1,6 @@
 import { getSupabase } from "./supabase";
 import { findProfileByIdentifier, formatDisplayName } from "./profile-store";
-import { inviteOrResendEmail, isAccountConfirmed } from "./account-invites";
+import { inviteOrResendEmail } from "./account-invites";
 
 const TABLE = "project_members";
 
@@ -159,10 +159,11 @@ export async function addMemberByIdentifier(
   // fires on auth.users insert), not just once they've actually accepted —
   // so finding one by email doesn't by itself mean there's nothing left to
   // do. Only short-circuit to "just add them" once the account is actually
-  // confirmed; a still-pending invite falls through to invite/resend below
-  // like a brand-new email would. A username match is never ambiguous this
-  // way — only a signed-in (i.e. confirmed) account can have set one.
-  if (existing && (!isEmail || (await isAccountConfirmed(existing.id)))) {
+  // registered (registered_at set — see profile-store.ts); a still-pending
+  // invite falls through to invite/resend below like a brand-new email
+  // would. A username match is never ambiguous this way — only an account
+  // that's actually set a password could have set one.
+  if (existing && (!isEmail || existing.registered_at)) {
     const member = await addMember(projectId, existing.id, role);
     return { ok: true, member, invited: false, resent: false };
   }

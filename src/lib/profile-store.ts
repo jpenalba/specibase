@@ -31,6 +31,10 @@ export type Profile = {
   // phase 4. Off means nothing this account does gets recorded anywhere,
   // full stop (src/lib/activity-log.ts's logActivity checks this first).
   log_enabled: boolean;
+  // Null until a password's actually been saved via /reset-password (see
+  // markRegistered below) — the signal account-invites.ts uses to decide
+  // whether an invite to this email can still be re-sent.
+  registered_at: string | null;
 };
 
 export type ProfileUpdateInput = {
@@ -44,6 +48,19 @@ export type ProfileUpdateInput = {
   lab_group?: string | null;
   log_enabled?: boolean;
 };
+
+// Marks `userId` as having actually finished setting a password — called
+// from /reset-password right after updateUser succeeds, whether that's
+// accepting a first invite or an ordinary later password change. See the
+// Profile type's registered_at field for why this exists instead of
+// trusting Supabase's own email_confirmed_at.
+export async function markRegistered(userId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from(TABLE)
+    .update({ registered_at: new Date().toISOString() })
+    .eq("id", userId);
+  if (error) throw new Error(error.message);
+}
 
 export async function getProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await getSupabase().from(TABLE).select("*").eq("id", userId).maybeSingle();

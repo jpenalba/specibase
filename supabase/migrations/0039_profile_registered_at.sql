@@ -1,0 +1,12 @@
+-- Supabase's own email_confirmed_at turned out to be the wrong signal for
+-- "has this account actually finished registering" (see
+-- src/lib/account-invites.ts's inviteOrResendEmail): Supabase sets it the
+-- moment someone *clicks* an invite or recovery link, before they've
+-- necessarily set a password — so someone who clicked an invite, hit a
+-- broken redirect (or just closed the tab) before setting one, still
+-- looked "confirmed" and got wrongly blocked from being re-invited.
+-- registered_at is this app's own, authoritative signal instead: set only
+-- once a password has actually been saved via /reset-password (see
+-- POST /api/profile/registered), whether that's accepting a first invite
+-- or an ordinary later password change.
+alter table profiles add column if not exists registered_at timestamptz;

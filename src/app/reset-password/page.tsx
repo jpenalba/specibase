@@ -71,6 +71,11 @@ export default function ResetPasswordPage() {
         setError(error.message);
         return;
       }
+      // Best-effort — see profile-store.ts's registered_at. A failure here
+      // just means a future re-invite to this email might wrongly trust
+      // Supabase's own (too-early) confirmation flag instead, not that
+      // anything about *this* password change failed.
+      fetch("/api/profile/registered", { method: "POST" }).catch(() => {});
       // A full navigation, not router.push — proxy.ts and every Server
       // Component need to see the session the recovery flow just
       // finalized, which a client-side route transition wouldn't re-fetch
