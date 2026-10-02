@@ -30,23 +30,25 @@ import { createServerClient } from "@supabase/ssr";
 // site breaking the moment this code ships, before the one-time manual
 // Supabase setup (see .env.example) is done.
 const PUBLIC_PATHS = ["/login", "/forgot-password"];
-// API routes reachable while signed out — just the one the login form
-// itself needs (turning a username into an email before it can even call
-// Supabase Auth). Checked separately from PUBLIC_PATHS since, unlike
-// /login, an already-signed-in caller hitting this shouldn't get bounced
-// to "/" — it's a plain lookup, not a page.
-const PUBLIC_API_PATHS = ["/api/auth/resolve-identifier"];
-// Reachable both signed out AND signed in, unlike PUBLIC_PATHS — this is
-// where a password-reset email's link lands. That link carries a fresh
-// "recovery" session the browser only establishes client-side once the
-// page's own JS runs (see reset-password/page.tsx), so the very first,
-// server-rendered load of this page still looks signed-out to this
-// middleware and must not be redirected to /login. It also has to stay
-// reachable for someone with an *ordinary* signed-in session already in
-// that browser — the "change password" flow in User settings sends this
-// same link while already logged in, and PUBLIC_PATHS' bounce-to-"/"
-// behavior would break that case.
-const PUBLIC_NO_BOUNCE_PATHS = ["/reset-password"];
+// API routes reachable while signed out — the login form's own lookup
+// (turning a username into an email before it can even call Supabase
+// Auth), and the invite/recovery link confirmation step an invitee hits
+// before they have any session at all (see auth/confirm/page.tsx).
+// Checked separately from PUBLIC_PATHS since, unlike /login, an
+// already-signed-in caller hitting either shouldn't get bounced to "/" —
+// they're plain API calls, not pages.
+const PUBLIC_API_PATHS = ["/api/auth/resolve-identifier", "/api/auth/confirm"];
+// Reachable both signed out AND signed in, unlike PUBLIC_PATHS. /auth/confirm
+// is where an invite/recovery email's link actually lands (it verifies the
+// link and establishes the resulting session), and /reset-password is
+// where it sends you next to set a password — neither has a session yet
+// on first load for a signed-out invitee, so both must not be redirected
+// to /login. They also have to stay reachable for someone with an
+// *ordinary* signed-in session already in that browser — the "change
+// password" flow in User settings sends this same kind of link while
+// already logged in, and PUBLIC_PATHS' bounce-to-"/" behavior would break
+// that case.
+const PUBLIC_NO_BOUNCE_PATHS = ["/auth/confirm", "/reset-password"];
 
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
