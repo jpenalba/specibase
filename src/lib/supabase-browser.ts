@@ -12,10 +12,20 @@ import { createBrowserClient } from "@supabase/ssr";
 // tokens from the URL. /reset-password uses this to peek at whatever
 // session already exists in this browser *before* an invite/recovery
 // link's tokens get applied, so it can ask before silently switching
-// accounts out from under whoever's already signed in. Safe to call this
-// repeatedly with different options — each call makes its own client
-// instance, but they all read/write the same underlying session cookies.
-export function getSupabaseBrowserClient(options?: { detectSessionInUrl?: boolean }) {
+// accounts out from under whoever's already signed in.
+//
+// IMPORTANT: @supabase/ssr's createBrowserClient caches a module-level
+// singleton and, by default, hands that *same* instance back to every
+// caller regardless of what options a later call passes — only the
+// options from whichever call happens to construct it first actually
+// take effect. A one-off client with non-default options (like the
+// detectSessionInUrl: false peek above) must pass isSingleton: false,
+// or it'll silently become the shared singleton and "lock in" its
+// options for every other getSupabaseBrowserClient() call on the page.
+export function getSupabaseBrowserClient(options?: {
+  detectSessionInUrl?: boolean;
+  isSingleton?: boolean;
+}) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) {
@@ -24,6 +34,7 @@ export function getSupabaseBrowserClient(options?: { detectSessionInUrl?: boolea
     );
   }
   return createBrowserClient(url, anonKey, {
+    isSingleton: options?.isSingleton ?? true,
     auth: { detectSessionInUrl: options?.detectSessionInUrl ?? true },
   });
 }

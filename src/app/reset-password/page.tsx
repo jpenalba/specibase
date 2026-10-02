@@ -82,9 +82,10 @@ export default function ResetPasswordPage() {
 
   // Applies this link's tokens and waits for the resulting session — only
   // called once it's established that doing so won't silently replace
-  // someone else's active session (see the precheck in the effect below,
-  // and handleSignOutAndContinue which calls this again once that
-  // conflicting session is out of the way).
+  // someone else's active session (see the precheck in the effect below).
+  // handleSignOutAndContinue doesn't call this directly — it reloads the
+  // page instead, which re-runs the precheck and lands back here on its
+  // own once the conflicting session is actually gone.
   function startSession() {
     let supabase;
     try {
@@ -114,10 +115,14 @@ export default function ResetPasswordPage() {
     // applied immediately, as before) when the account signed in already
     // matches who this link is actually for — the ordinary "change my own
     // password while logged in" case from User settings, which shouldn't
-    // need an extra prompt.
+    // need an extra prompt. isSingleton: false keeps this one-off instance
+    // from becoming the shared client (see supabase-browser.ts) — if it
+    // did, startSession()'s later getSupabaseBrowserClient() call would get
+    // *this* detectSessionInUrl: false instance back instead of a real
+    // one, and the link's tokens would never actually get consumed.
     let precheck;
     try {
-      precheck = getSupabaseBrowserClient({ detectSessionInUrl: false });
+      precheck = getSupabaseBrowserClient({ detectSessionInUrl: false, isSingleton: false });
     } catch {
       Promise.resolve().then(() => {
         if (mountedRef.current) setPhase("expired");
@@ -140,15 +145,20 @@ export default function ResetPasswordPage() {
   async function handleSignOutAndContinue() {
     setSigningOut(true);
     try {
-      await getSupabaseBrowserClient({ detectSessionInUrl: false }).auth.signOut();
+      await getSupabaseBrowserClient({ detectSessionInUrl: false, isSingleton: false }).auth.signOut();
     } catch {
-      // Proceed regardless — establishing the new session below is what
-      // actually matters, and it'll succeed or fail on its own.
+      // Reload regardless — it re-evaluates everything from scratch either
+      // way, and any lingering session just re-triggers the conflict screen.
     }
-    setConflictEmail(null);
-    setPhase("checking");
-    setSigningOut(false);
-    startSession();
+    // A full reload, not a client-side retry: the nav bar and every other
+    // Server Component on the page were rendered with the now-stale signed
+    // in session, and only a real navigation re-fetches them against the
+    // cleared cookie. It also sidesteps the singleton gotcha documented on
+    // getSupabaseBrowserClient — reloading re-runs this component's effect
+    // from the top, so the link's still-unconsumed tokens in the URL get
+    // picked up by a freshly created client instead of reusing any client
+    // built above.
+    window.location.reload();
   }
 
   async function handleSubmit(e: React.FormEvent) {
