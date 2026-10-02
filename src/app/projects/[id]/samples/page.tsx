@@ -10,6 +10,7 @@ import { DEFAULT_LAYER_SHAPE, LayerShape } from "@/lib/layer-shapes";
 import { getVisibleColumns, MARKER_STYLE_FIELDS } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
+import { useHiddenCustomColumns } from "@/lib/use-hidden-custom-columns";
 import { useSampleCustomColumns } from "@/lib/use-sample-custom-columns";
 import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { MarkerStyle } from "@/lib/project-marker-styles-store";
@@ -57,9 +58,17 @@ export default function ProjectSamplesPage() {
 
   const { selected, toggle } = useOptionalFields(projectId);
   const { columns: customColumns, addColumnLocally, reload: reloadCustomColumns } = useSampleCustomColumns(projectId);
+  const { hidden: hiddenCustomColumnIds, toggle: toggleCustomColumn } = useHiddenCustomColumns(projectId);
+  // Excluded from what's actually rendered as a column (table, map popup,
+  // CSV export) but not from sample-loader dialogs or marker styling —
+  // see FieldPickerButton's own column for the same split.
+  const visibleCustomColumns = useMemo(
+    () => customColumns.filter((c) => !hiddenCustomColumnIds.has(c.id)),
+    [customColumns, hiddenCustomColumnIds]
+  );
   const popupColumns = useMemo(
-    () => [...getVisibleColumns(selected), ...customColumns.map(customColumnToFieldDef)],
-    [selected, customColumns]
+    () => [...getVisibleColumns(selected), ...visibleCustomColumns.map(customColumnToFieldDef)],
+    [selected, visibleCustomColumns]
   );
   const markerStyleFields = useMemo(
     () => [...MARKER_STYLE_FIELDS, ...customColumns.map(customColumnToFieldDef)],
@@ -350,7 +359,13 @@ export default function ProjectSamplesPage() {
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={tableSamples.length === 0}>
             Export CSV
           </Button>
-          <FieldPickerButton selected={selected} onToggle={toggle} />
+          <FieldPickerButton
+            selected={selected}
+            onToggle={toggle}
+            customColumns={customColumns}
+            hiddenCustomColumnIds={hiddenCustomColumnIds}
+            onToggleCustomColumn={toggleCustomColumn}
+          />
           {editable && editMode && (
             <ManageSampleColumnsDialog
               columns={customColumns}
@@ -380,7 +395,7 @@ export default function ProjectSamplesPage() {
         samples={tableSamples}
         allIdentifiers={samples.map((s) => s.primary_identifier)}
         visibleOptionalKeys={selected}
-        customColumns={customColumns}
+        customColumns={visibleCustomColumns}
         hiddenSampleIds={hiddenSampleIds}
         onToggleHidden={toggleSampleHidden}
         highlightedSampleId={highlightedSampleId}

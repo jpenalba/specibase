@@ -8,6 +8,7 @@ import { Collection, CollectionSample } from "@/lib/collections-store";
 import { RawRow } from "@/lib/validation";
 import { getVisibleColumns } from "@/lib/fields";
 import { useOptionalFields } from "@/lib/use-optional-fields";
+import { useHiddenCustomColumns } from "@/lib/use-hidden-custom-columns";
 import { useCollectionCustomColumns } from "@/lib/use-collection-custom-columns";
 import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { CollectionIcon } from "@/components/collections/collection-icon";
@@ -53,6 +54,7 @@ export default function CollectionSamplesPage() {
     addColumnLocally,
     reload: reloadCustomColumns,
   } = useCollectionCustomColumns(collectionId);
+  const { hidden: hiddenCustomColumnIds, toggle: toggleCustomColumn } = useHiddenCustomColumns(collectionId);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [samples, setSamples] = useState<CollectionSample[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,9 +175,11 @@ export default function CollectionSamplesPage() {
     }
   }
 
+  // Excluded from the rendered table here, but not from the sample-loader
+  // dialogs below — see FieldPickerButton's own column for the same split.
   const columns = [
     ...getVisibleColumns(visibleOptionalKeys),
-    ...customColumns.map(customColumnToFieldDef),
+    ...customColumns.filter((c) => !hiddenCustomColumnIds.has(c.id)).map(customColumnToFieldDef),
   ];
 
   if (loading) {
@@ -241,7 +245,13 @@ export default function CollectionSamplesPage() {
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <FieldPickerButton selected={visibleOptionalKeys} onToggle={toggleOptionalKey} />
+            <FieldPickerButton
+              selected={visibleOptionalKeys}
+              onToggle={toggleOptionalKey}
+              customColumns={customColumns}
+              hiddenCustomColumnIds={hiddenCustomColumnIds}
+              onToggleCustomColumn={toggleCustomColumn}
+            />
             <ManageSampleColumnsDialog
               columns={customColumns}
               onSaved={reloadCustomColumns}

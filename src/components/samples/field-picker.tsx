@@ -21,6 +21,9 @@ export function FieldPicker({
   selected,
   onToggle,
   showRequiredFields = false,
+  customColumns = [],
+  hiddenCustomColumnIds,
+  onToggleCustomColumn,
 }: {
   selected: string[];
   onToggle: (key: string) => void;
@@ -31,39 +34,67 @@ export function FieldPicker({
   // (FieldPickerButton) doesn't need this: those two columns are already
   // unconditionally pinned in the table itself, with nothing to toggle.
   showRequiredFields?: boolean;
+  // "Other: specify" custom columns, shown as their own section below the
+  // preset fields — only FieldPickerButton passes these (TemplateDialog's
+  // CSV template is built from preset field keys alone, so it has nothing
+  // to toggle here). Only {id, label} are read, so any custom-column shape
+  // (sample, collection, ...) works.
+  customColumns?: { id: string; label: string }[];
+  hiddenCustomColumnIds?: Set<string>;
+  onToggleCustomColumn?: (id: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-      {showRequiredFields &&
-        REQUIRED_FIELDS.map((field) => (
+    <div className="grid gap-4">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        {showRequiredFields &&
+          REQUIRED_FIELDS.map((field) => (
+            <div key={field.key} className="flex items-start gap-2">
+              <Checkbox id={`field-${field.key}`} checked disabled className="mt-0.5" />
+              <div className="grid gap-0.5">
+                <Label htmlFor={`field-${field.key}`} className="text-muted-foreground">
+                  {field.label}
+                </Label>
+                <span className="text-xs text-muted-foreground">Always included — required</span>
+              </div>
+            </div>
+          ))}
+        {OPTIONAL_FIELDS.map((field) => (
           <div key={field.key} className="flex items-start gap-2">
-            <Checkbox id={`field-${field.key}`} checked disabled className="mt-0.5" />
+            <Checkbox
+              id={`field-${field.key}`}
+              checked={selected.includes(field.key)}
+              onCheckedChange={() => onToggle(field.key)}
+              className="mt-0.5"
+            />
             <div className="grid gap-0.5">
-              <Label htmlFor={`field-${field.key}`} className="text-muted-foreground">
-                {field.label}
-              </Label>
-              <span className="text-xs text-muted-foreground">Always included — required</span>
+              <Label htmlFor={`field-${field.key}`}>{field.label}</Label>
+              {field.description && (
+                <span className="text-xs text-muted-foreground">
+                  {field.description}
+                </span>
+              )}
             </div>
           </div>
         ))}
-      {OPTIONAL_FIELDS.map((field) => (
-        <div key={field.key} className="flex items-start gap-2">
-          <Checkbox
-            id={`field-${field.key}`}
-            checked={selected.includes(field.key)}
-            onCheckedChange={() => onToggle(field.key)}
-            className="mt-0.5"
-          />
-          <div className="grid gap-0.5">
-            <Label htmlFor={`field-${field.key}`}>{field.label}</Label>
-            {field.description && (
-              <span className="text-xs text-muted-foreground">
-                {field.description}
-              </span>
-            )}
+      </div>
+      {customColumns.length > 0 && onToggleCustomColumn && (
+        <div className="grid gap-3 border-t border-border pt-3">
+          <p className="text-xs font-medium text-muted-foreground">Custom columns</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            {customColumns.map((column) => (
+              <div key={column.id} className="flex items-start gap-2">
+                <Checkbox
+                  id={`custom-field-${column.id}`}
+                  checked={!hiddenCustomColumnIds?.has(column.id)}
+                  onCheckedChange={() => onToggleCustomColumn(column.id)}
+                  className="mt-0.5"
+                />
+                <Label htmlFor={`custom-field-${column.id}`}>{column.label}</Label>
+              </div>
+            ))}
           </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -75,17 +106,28 @@ export function FieldPicker({
 export function FieldPickerButton({
   selected,
   onToggle,
+  customColumns = [],
+  hiddenCustomColumnIds,
+  onToggleCustomColumn,
 }: {
   selected: string[];
   onToggle: (key: string) => void;
+  // "Other: specify" custom columns, listed below the preset fields with
+  // their own tick-to-hide checkboxes — see field-picker.tsx's own note on
+  // FieldPicker for why only {id, label} are needed.
+  customColumns?: { id: string; label: string }[];
+  hiddenCustomColumnIds?: Set<string>;
+  onToggleCustomColumn?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const visibleCustomCount = customColumns.filter((c) => !hiddenCustomColumnIds?.has(c.id)).length;
+  const totalVisible = selected.length + visibleCustomCount;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
-          Columns{selected.length > 0 ? ` (${selected.length})` : ""}
+          Columns{totalVisible > 0 ? ` (${totalVisible})` : ""}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
@@ -93,10 +135,17 @@ export function FieldPickerButton({
           <DialogTitle>Table columns</DialogTitle>
           <DialogDescription>
             Tick which optional fields to show — the same set is used for the CSV template.
+            Custom columns default to shown and can be hidden here without deleting them.
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] overflow-y-auto pr-1">
-          <FieldPicker selected={selected} onToggle={onToggle} />
+          <FieldPicker
+            selected={selected}
+            onToggle={onToggle}
+            customColumns={customColumns}
+            hiddenCustomColumnIds={hiddenCustomColumnIds}
+            onToggleCustomColumn={onToggleCustomColumn}
+          />
         </div>
       </DialogContent>
     </Dialog>

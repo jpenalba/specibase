@@ -11,6 +11,7 @@ import { LayerShape } from "@/lib/layer-shapes";
 import { getVisibleColumns } from "@/lib/fields";
 import { samplesToCsv, downloadTextFile } from "@/lib/csv";
 import { useOptionalFields } from "@/lib/use-optional-fields";
+import { useHiddenCustomColumns } from "@/lib/use-hidden-custom-columns";
 import { useSampleCustomColumns } from "@/lib/use-sample-custom-columns";
 import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { SampleMap } from "@/components/database/sample-map";
@@ -48,9 +49,18 @@ export default function DatabasePage() {
   const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
   const { selected, toggle } = useOptionalFields();
   const { columns: customColumns, addColumnLocally, reload: reloadCustomColumns } = useSampleCustomColumns();
+  const { hidden: hiddenCustomColumnIds, toggle: toggleCustomColumn } = useHiddenCustomColumns();
+  // Custom columns a sample loader (Add sample/Import CSV) can still fill
+  // in regardless of hidden state — see FieldPickerButton's own column —
+  // but excluded here from what's actually rendered as a column (table,
+  // map popup, CSV export).
+  const visibleCustomColumns = useMemo(
+    () => customColumns.filter((c) => !hiddenCustomColumnIds.has(c.id)),
+    [customColumns, hiddenCustomColumnIds]
+  );
   const popupColumns = useMemo(
-    () => [...getVisibleColumns(selected), ...customColumns.map(customColumnToFieldDef)],
-    [selected, customColumns]
+    () => [...getVisibleColumns(selected), ...visibleCustomColumns.map(customColumnToFieldDef)],
+    [selected, visibleCustomColumns]
   );
 
   // Reloads samples and projects/links together — used on first load and
@@ -395,7 +405,13 @@ export default function DatabasePage() {
           </Button>
         </div>
         <div className="flex items-center gap-3">
-          <FieldPickerButton selected={selected} onToggle={toggle} />
+          <FieldPickerButton
+            selected={selected}
+            onToggle={toggle}
+            customColumns={customColumns}
+            hiddenCustomColumnIds={hiddenCustomColumnIds}
+            onToggleCustomColumn={toggleCustomColumn}
+          />
           {editMode && (
             <ManageSampleColumnsDialog
               columns={customColumns}
@@ -427,7 +443,7 @@ export default function DatabasePage() {
           samples={tableSamples}
           allIdentifiers={samples.map((s) => s.primary_identifier)}
           visibleOptionalKeys={selected}
-          customColumns={customColumns}
+          customColumns={visibleCustomColumns}
           hiddenSampleIds={hiddenSampleIds}
           onToggleHidden={toggleSampleHidden}
           highlightedSampleId={highlightedSampleId}
