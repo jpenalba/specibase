@@ -191,14 +191,6 @@ export function SimpleGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (samples.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-        No samples enrolled yet. Use &quot;Manage samples&quot; to add some.
-      </div>
-    );
-  }
-
   return (
     <div className="select-none overflow-x-auto rounded-lg border border-border">
       <Table className="w-auto">

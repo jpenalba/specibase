@@ -165,14 +165,6 @@ export function DetailTable({
     setPendingFill(null);
   }
 
-  if (displayRows.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-        No samples enrolled yet. Use &quot;Manage samples&quot; to add some.
-      </div>
-    );
-  }
-
   const fillCount = pendingFill ? Math.abs(pendingFill.targetIndex - pendingFill.sourceIndex) : 0;
   // Rough popup footprint, clamped inside the viewport so it never renders
   // partly off-screen near an edge or corner.

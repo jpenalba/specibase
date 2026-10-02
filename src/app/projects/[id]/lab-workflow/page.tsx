@@ -25,7 +25,10 @@ export default function ProjectWorkflowsPage() {
   const load = useCallback(() => {
     Promise.all([
       fetch(`/api/lab-workflows?projectId=${projectId}`).then((res) => res.json()),
-      fetch("/api/samples").then((res) => res.json()),
+      // This project's own samples, not every sample the account has —
+      // enrolling a sample in a workflow should only ever be possible for
+      // samples actually linked to this project (see ManageSamplesDialog).
+      fetch(`/api/projects/${projectId}/samples`).then((res) => res.json()),
     ])
       .then(([workflowsData, samplesData]) => {
         if (workflowsData.errors?.length > 0) {

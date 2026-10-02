@@ -509,7 +509,24 @@ export function WorkflowSection({
         )}
       </div>
 
-      {view === "simple" ? (
+      {enrolledSamples.length === 0 ? (
+        // A real call to action, not just text pointing at a button that
+        // (before this) only existed once Edit mode was already on — a
+        // brand-new workflow has no samples and starts outside Edit mode,
+        // so that button was never actually visible yet. This one works
+        // regardless of editMode, same as the dialog itself doesn't care.
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+          <p>No samples enrolled yet.</p>
+          <ManageSamplesDialog
+            workflowId={workflowId}
+            allSamples={allSamples}
+            enrolledIds={enrolledIds}
+            onSaved={load}
+            apiBase={apiBase}
+            trigger={<Button size="sm">Manage samples</Button>}
+          />
+        </div>
+      ) : view === "simple" ? (
         <SimpleGrid
           steps={steps}
           samples={pageSamples}
