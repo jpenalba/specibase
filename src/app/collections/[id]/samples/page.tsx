@@ -289,7 +289,7 @@ export default function CollectionSamplesPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <StagingTable staged={staged} visibleOptionalKeys={visibleOptionalKeys} onRemove={removeStaged} />
+          <StagingTable staged={staged} onRemove={removeStaged} />
         </CardContent>
         <CardFooter>
           <Button onClick={handleUpload} disabled={staged.length === 0 || uploading}>

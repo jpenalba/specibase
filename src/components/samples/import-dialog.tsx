@@ -51,6 +51,7 @@ export function ImportDialog({
   onStage,
   customColumns = [],
   onCustomColumnAdded,
+  projectId,
 }: {
   takenIdentifiers: string[];
   onStage: (rows: RawRow[]) => void;
@@ -61,6 +62,10 @@ export function ImportDialog({
   // out, in which case an unrecognized header is just left as-is.
   customColumns?: SampleCustomColumn[];
   onCustomColumnAdded?: (column: SampleCustomColumn) => void;
+  // Set from a project's Samples tab so a column created here for an
+  // unrecognized header is scoped to that project, same as
+  // ManageSampleColumnsDialog's own projectId prop.
+  projectId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
@@ -115,7 +120,7 @@ export function ImportDialog({
         const res = await fetch("/api/samples/custom-columns", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ label: header }),
+          body: JSON.stringify({ label: header, projectId }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {

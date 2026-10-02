@@ -148,6 +148,7 @@ export function AddSamplesPanel({
             onStage={stageMany}
             customColumns={customColumns}
             onCustomColumnAdded={onCustomColumnAdded}
+            projectId={fixedProjectId}
           />
           <TemplateDialog selected={selected} onToggle={toggle} />
           <AddSampleDialog
@@ -159,7 +160,7 @@ export function AddSamplesPanel({
         </div>
       </div>
 
-      <StagingTable staged={staged} visibleOptionalKeys={selected} onRemove={removeStaged} />
+      <StagingTable staged={staged} customColumns={customColumns} onRemove={removeStaged} />
 
       <Card>
         <CardHeader>

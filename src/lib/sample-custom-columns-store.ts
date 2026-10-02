@@ -15,6 +15,9 @@ export type SampleCustomColumn = {
   id: string;
   created_at: string;
   owner_id: string;
+  // Null means created from the plain Database page — see the migration
+  // comment on this column for the full scoping rules.
+  project_id: string | null;
   position: number;
   label: string;
 };
@@ -42,23 +45,41 @@ export function customColumnToFieldDef(column: SampleCustomColumn): FieldDef {
   return { key: customColumnKey(column.id), label: column.label, type: "text" };
 }
 
-export async function listCustomColumns(ownerId: string): Promise<SampleCustomColumn[]> {
-  const { data, error } = await getSupabase()
-    .from(COLUMNS_TABLE)
-    .select("*")
-    .eq("owner_id", ownerId)
-    .order("position", { ascending: true });
+// With no projectId, returns every column this account has — the plain
+// Database page's view, which is why a project-scoped column still shows
+// up there (see the type's own doc comment). With one, returns only that
+// project's own columns — what a project's Manage columns dialog and
+// Import CSV should offer, so one project's one-off "Other: specify"
+// columns don't clutter every other project's list too.
+export async function listCustomColumns(
+  ownerId: string,
+  projectId?: string
+): Promise<SampleCustomColumn[]> {
+  let query = getSupabase().from(COLUMNS_TABLE).select("*").eq("owner_id", ownerId);
+  if (projectId) query = query.eq("project_id", projectId);
+  const { data, error } = await query.order("position", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as SampleCustomColumn[];
 }
 
 // Appended after whatever's already there, same as the lab/bio workflows'
-// own custom columns.
-export async function addCustomColumn(label: string, ownerId: string): Promise<SampleCustomColumn> {
+// own custom columns — position is a single counter across every project,
+// not reset per project, since nothing needs it densely packed within a
+// project's own subset, just stable and increasing.
+export async function addCustomColumn(
+  label: string,
+  ownerId: string,
+  projectId?: string
+): Promise<SampleCustomColumn> {
   const existing = await listCustomColumns(ownerId);
   const { data, error } = await getSupabase()
     .from(COLUMNS_TABLE)
-    .insert({ owner_id: ownerId, label: label.trim(), position: existing.length })
+    .insert({
+      owner_id: ownerId,
+      project_id: projectId ?? null,
+      label: label.trim(),
+      position: existing.length,
+    })
     .select()
     .single();
   if (error) throw new Error(error.message);

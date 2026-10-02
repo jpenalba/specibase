@@ -128,14 +128,20 @@ create table if not exists samples (
 );
 
 -- Fully user-nameable "Other: specify" fields on samples — see
--- supabase/migrations/0028_sample_custom_columns.sql. Personal to the
+-- supabase/migrations/0028_sample_custom_columns.sql. Always scoped to the
 -- account that defined them (see 0032_owner_scoping.sql), same as samples
--- themselves — unlike lab_workflow_custom_columns below, which is scoped
--- to one project's workflow instead.
+-- themselves. Optionally also scoped to the project it was created from
+-- (see 0041_sample_custom_columns_project_scope.sql) — project_id null
+-- means it was created from the plain Database page and shows up on
+-- every project that account has, same as before that migration; set
+-- means it's specific to that one project, but still shows up on the
+-- Database page too (which lists an account's columns with no project
+-- filter at all).
 create table if not exists sample_custom_columns (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   owner_id uuid not null references profiles (id),
+  project_id uuid references projects (id) on delete cascade,
 
   position integer not null,
   label text not null
@@ -153,6 +159,7 @@ create table if not exists sample_custom_values (
 );
 
 create index if not exists sample_custom_values_sample_id_idx on sample_custom_values (sample_id);
+create index if not exists sample_custom_columns_project_id_idx on sample_custom_columns (project_id);
 
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),

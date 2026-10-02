@@ -14,19 +14,27 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-// The "Other: specify" custom fields on samples — global, not scoped to a
-// project or workflow. Add/rename/delete here, from edit mode, mirroring
-// the lab/bio workflows' own ManageDetailColumnsDialog (same "Custom
-// column name" + add button at the bottom, minus the preset pills, since
-// there's no fixed vocabulary to offer for a sample field).
+// The "Other: specify" custom fields on samples — scoped to one project
+// when opened from that project's Samples tab (projectId set, and
+// `columns` is already that project's own subset), or to the account as a
+// whole when opened from the plain Database page. Add/rename/delete here,
+// from edit mode, mirroring the lab/bio workflows' own
+// ManageDetailColumnsDialog (same "Custom column name" + add button at
+// the bottom, minus the preset pills, since there's no fixed vocabulary
+// to offer for a sample field).
 export function ManageSampleColumnsDialog({
   columns,
   onSaved,
   trigger,
+  projectId,
 }: {
   columns: SampleCustomColumn[];
   onSaved: () => void;
   trigger: React.ReactNode;
+  // Set from a project's Samples tab so a column added here is scoped to
+  // that project — see sample-custom-columns-store.ts. Left unset from the
+  // plain Database page, which creates an unscoped column instead.
+  projectId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -53,7 +61,7 @@ export function ManageSampleColumnsDialog({
       const res = await fetch("/api/samples/custom-columns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label }),
+        body: JSON.stringify({ label, projectId }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

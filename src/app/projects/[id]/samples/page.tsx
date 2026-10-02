@@ -56,7 +56,7 @@ export default function ProjectSamplesPage() {
   const [linkError, setLinkError] = useState<string | null>(null);
 
   const { selected, toggle } = useOptionalFields();
-  const { columns: customColumns, addColumnLocally, reload: reloadCustomColumns } = useSampleCustomColumns();
+  const { columns: customColumns, addColumnLocally, reload: reloadCustomColumns } = useSampleCustomColumns(projectId);
   const popupColumns = useMemo(
     () => [...getVisibleColumns(selected), ...customColumns.map(customColumnToFieldDef)],
     [selected, customColumns]
@@ -355,6 +355,7 @@ export default function ProjectSamplesPage() {
             <ManageSampleColumnsDialog
               columns={customColumns}
               onSaved={reloadCustomColumns}
+              projectId={projectId}
               trigger={
                 <Button variant="outline" size="sm">
                   Manage columns
