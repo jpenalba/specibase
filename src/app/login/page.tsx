@@ -112,11 +112,8 @@ function LoginForm() {
       </form>
 
       <p className="text-xs text-muted-foreground">
-        Don&apos;t have an account?{" "}
-        <Link href="/signup" className="underline">
-          Create one
-        </Link>
-        .
+        Accounts are created by invite only — contact whoever runs your Specibase instance if you
+        don&apos;t have one yet.
       </p>
     </div>
   );
