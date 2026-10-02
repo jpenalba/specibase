@@ -3,6 +3,7 @@ import { RawRow, validateRow } from "./validation";
 import { normalizeDatesForStorage } from "./samples-store";
 import { CollectionType } from "./collection-types";
 import { matchGbifSpeciesBatch, applyGbifClassificationToRow } from "./gbif";
+import { addMember } from "./collection-members-store";
 import {
   customColumnIdFromKey,
   customColumnKey,
@@ -12,6 +13,7 @@ import {
 
 const COLLECTIONS_TABLE = "collections";
 const SAMPLES_TABLE = "collection_samples";
+const MEMBERS_TABLE = "collection_members";
 
 // Postgres's unique_violation code — used to turn a duplicate name into a
 // message worth showing someone, instead of a raw constraint error.
@@ -46,15 +48,17 @@ export type NewCollectionInput = {
 
 export type UpdateCollectionInput = Partial<NewCollectionInput>;
 
+// Creating a collection makes `creatorId` its first Owner, same as
+// createProject does for project_members.
 export async function createCollection(
   input: NewCollectionInput,
-  ownerId: string
+  creatorId: string
 ): Promise<Collection> {
   const name = input.name.trim();
   const { data, error } = await getSupabase()
     .from(COLLECTIONS_TABLE)
     .insert({
-      owner_id: ownerId,
+      owner_id: creatorId,
       name,
       description: input.description?.trim() || null,
       // Omitted (rather than set to null) when blank, so the column's own
@@ -73,15 +77,16 @@ export async function createCollection(
     }
     throw new Error(error.message);
   }
-  return data as Collection;
+  const collection = data as Collection;
+  await addMember(collection.id, creatorId, "owner");
+  return collection;
 }
 
-// Partial update — only fields present in `input` are changed.
-export async function updateCollection(
-  id: string,
-  input: UpdateCollectionInput,
-  ownerId: string
-): Promise<Collection> {
+// Partial update — only fields present in `input` are changed. No owner_id
+// filter here any more: the caller (the API route) has already checked
+// requireCollectionRole before this runs, same division of labor as
+// updateProject.
+export async function updateCollection(id: string, input: UpdateCollectionInput): Promise<Collection> {
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name.trim();
   if (input.description !== undefined) patch.description = input.description.trim() || null;
@@ -97,7 +102,6 @@ export async function updateCollection(
     .from(COLLECTIONS_TABLE)
     .update(patch)
     .eq("id", id)
-    .eq("owner_id", ownerId)
     .select()
     .maybeSingle();
   if (error) {
@@ -110,22 +114,30 @@ export async function updateCollection(
   return data as Collection;
 }
 
-export async function listCollections(ownerId: string): Promise<Collection[]> {
+// Every collection `userId` is a member of, regardless of role — replaces
+// the old owner_id-only listing now that a collection can be shared (see
+// supabase/migrations/0044_collection_members.sql). Mirrors
+// listProjectsForUser in @/lib/projects-store.
+export async function listCollections(userId: string): Promise<Collection[]> {
   const { data, error } = await getSupabase()
-    .from(COLLECTIONS_TABLE)
-    .select("*")
-    .eq("owner_id", ownerId)
-    .order("name", { ascending: true });
+    .from(MEMBERS_TABLE)
+    .select("collections(*)")
+    .eq("user_id", userId);
   if (error) throw new Error(error.message);
-  return (data ?? []) as Collection[];
+  const collections = (data ?? []).map((row) => row.collections as unknown as Collection);
+  collections.sort((a, b) => a.name.localeCompare(b.name));
+  return collections;
 }
 
-export async function getCollection(id: string, ownerId: string): Promise<Collection | null> {
+// No ownerId/userId param any more — the caller (every /api/collections/
+// [id]/** route) checks requireCollectionRole first, so this is just a
+// plain lookup by id, same division of labor as how project routes fetch
+// a project after requireProjectRole rather than re-filtering by member.
+export async function getCollection(id: string): Promise<Collection | null> {
   const { data, error } = await getSupabase()
     .from(COLLECTIONS_TABLE)
     .select("*")
     .eq("id", id)
-    .eq("owner_id", ownerId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return (data as Collection) ?? null;
@@ -133,22 +145,23 @@ export async function getCollection(id: string, ownerId: string): Promise<Collec
 
 export type CollectionSampleRef = { id: string; collection_id: string };
 
-// The caller's own collection ids — used to scope collection_samples
-// queries below to just this owner's collections, since collection_samples
-// itself has no owner_id column (it inherits access through its parent).
-async function ownedCollectionIds(ownerId: string): Promise<string[]> {
+// Every collection `userId` is a member of — used to scope
+// collection_samples queries below, since collection_samples itself has no
+// member table of its own (it inherits access through its parent). Mirrors
+// listCollections' own membership query, just the ids.
+async function memberCollectionIds(userId: string): Promise<string[]> {
   const { data, error } = await getSupabase()
-    .from(COLLECTIONS_TABLE)
-    .select("id")
-    .eq("owner_id", ownerId);
+    .from(MEMBERS_TABLE)
+    .select("collection_id")
+    .eq("user_id", userId);
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => row.id as string);
+  return (data ?? []).map((row) => row.collection_id as string);
 }
 
 // Just enough to compute a per-collection sample count without an N+1
 // query — mirrors listSampleProjectLinks() in @/lib/projects-store.
-export async function listCollectionSampleRefs(ownerId: string): Promise<CollectionSampleRef[]> {
-  const ids = await ownedCollectionIds(ownerId);
+export async function listCollectionSampleRefs(userId: string): Promise<CollectionSampleRef[]> {
+  const ids = await memberCollectionIds(userId);
   if (ids.length === 0) return [];
   const { data, error } = await getSupabase()
     .from(SAMPLES_TABLE)
@@ -205,11 +218,11 @@ export async function listCollectionSamples(collectionId: string): Promise<Colle
   return attachCustomValues(samples, await listCollectionCustomValues(collectionId));
 }
 
-// Every sample across every collection this owner has, each still carrying
-// its own collection_id — used by the database map to draw one layer per
-// collection without an N+1 fetch per collection.
-export async function listAllCollectionSamples(ownerId: string): Promise<CollectionSample[]> {
-  const ids = await ownedCollectionIds(ownerId);
+// Every sample across every collection this user is a member of, each
+// still carrying its own collection_id — used by the database map to draw
+// one layer per collection without an N+1 fetch per collection.
+export async function listAllCollectionSamples(userId: string): Promise<CollectionSample[]> {
+  const ids = await memberCollectionIds(userId);
   if (ids.length === 0) return [];
   const { data, error } = await getSupabase()
     .from(SAMPLES_TABLE)

@@ -250,6 +250,21 @@ create table if not exists collections (
   unique (owner_id, name)
 );
 
+-- Lets a collection be shared with other accounts — see
+-- supabase/migrations/0044_collection_members.sql. owner_id above stays as
+-- creator metadata (it still backs the uniqueness constraint), but
+-- authorization now goes through this table via requireCollectionRole,
+-- not a hard owner_id match.
+create table if not exists collection_members (
+  collection_id uuid not null references collections (id) on delete cascade,
+  user_id uuid not null references profiles (id) on delete cascade,
+  role text not null check (role in ('viewer', 'editor', 'owner')),
+  created_at timestamptz not null default now(),
+  primary key (collection_id, user_id)
+);
+
+create index if not exists collection_members_user_id_idx on collection_members (user_id);
+
 create table if not exists collection_samples (
   id uuid primary key default gen_random_uuid(),
   collection_id uuid not null references collections (id) on delete cascade,
@@ -730,14 +745,15 @@ create table if not exists notifications (
 
   -- Who sees this in their nav bar.
   user_id uuid not null references profiles (id) on delete cascade,
-  type text not null check (type in ('project_shared')),
+  type text not null check (type in ('project_shared', 'collection_shared')),
 
-  -- Which project it's about (cascades — a notification pointing at a
-  -- project that no longer exists has nowhere left to send a click), and
-  -- who did the sharing (set null instead: the notification's own text is
-  -- rendered once, from whoever was the actor at the time, so there's
-  -- nothing left for a deleted actor's id to break).
+  -- Which project/collection it's about (cascades — a notification
+  -- pointing at one that no longer exists has nowhere left to send a
+  -- click), and who did the sharing (set null instead: the notification's
+  -- own text is rendered once, from whoever was the actor at the time, so
+  -- there's nothing left for a deleted actor's id to break).
   project_id uuid references projects (id) on delete cascade,
+  collection_id uuid references collections (id) on delete cascade,
   actor_id uuid references profiles (id) on delete set null,
 
   -- Null means still unseen (shows in the bell); set once the person
@@ -768,6 +784,7 @@ alter table sample_custom_columns enable row level security;
 alter table sample_custom_values enable row level security;
 alter table projects enable row level security;
 alter table project_members enable row level security;
+alter table collection_members enable row level security;
 alter table sample_projects enable row level security;
 alter table collections enable row level security;
 alter table collection_samples enable row level security;

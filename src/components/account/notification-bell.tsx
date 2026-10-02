@@ -14,18 +14,20 @@ type Notification = {
   id: string;
   project_id: string | null;
   project_name: string | null;
+  collection_id: string | null;
+  collection_name: string | null;
   actor_name: string | null;
 };
 
 const POLL_INTERVAL_MS = 60_000;
 
-// The nav bar's bell — today just one kind of notification ("X shared a
-// project with you," see notifications-store.ts), but built as a list
-// since nothing stops two people sharing projects with the same account
-// before they're next online to see either. Polls rather than pushing:
-// this app has no realtime channel set up, and a once-a-minute lag before
-// a brand-new share shows up here is an acceptable tradeoff against
-// standing one up just for this.
+// The nav bar's bell — "X shared a project/collection with you" (see
+// notifications-store.ts), built as a list since nothing stops several
+// people sharing something with the same account before they're next
+// online to see any of them. Polls rather than pushing: this app has no
+// realtime channel set up, and a once-a-minute lag before a brand-new
+// share shows up here is an acceptable tradeoff against standing one up
+// just for this.
 export function NotificationBell() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -53,6 +55,8 @@ export function NotificationBell() {
     fetch(`/api/notifications/${notification.id}/seen`, { method: "POST" }).catch(() => {});
     if (notification.project_id) {
       router.push(`/projects/${notification.project_id}`);
+    } else if (notification.collection_id) {
+      router.push(`/collections/${notification.collection_id}/samples`);
     }
   }
 
@@ -79,14 +83,19 @@ export function NotificationBell() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        {notifications.map((notification) => (
-          <DropdownMenuItem key={notification.id} onSelect={() => handleOpen(notification)}>
-            <span className="text-sm">
-              <strong>{notification.actor_name ?? "Someone"}</strong> shared{" "}
-              <strong>{notification.project_name ?? "a project"}</strong> with you
-            </span>
-          </DropdownMenuItem>
-        ))}
+        {notifications.map((notification) => {
+          const itemName = notification.project_id
+            ? notification.project_name ?? "a project"
+            : notification.collection_name ?? "a collection";
+          return (
+            <DropdownMenuItem key={notification.id} onSelect={() => handleOpen(notification)}>
+              <span className="text-sm">
+                <strong>{notification.actor_name ?? "Someone"}</strong> shared{" "}
+                <strong>{itemName}</strong> with you
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

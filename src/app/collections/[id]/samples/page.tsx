@@ -14,8 +14,10 @@ import { useOptionalFields } from "@/lib/use-optional-fields";
 import { useHiddenCustomColumns } from "@/lib/use-hidden-custom-columns";
 import { useCollectionCustomColumns } from "@/lib/use-collection-custom-columns";
 import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
+import { CollectionRole } from "@/lib/collection-members-store";
 import { cn } from "@/lib/utils";
 import { CollectionIcon } from "@/components/collections/collection-icon";
+import { CollectionMembersDialog } from "@/components/collections/collection-members-dialog";
 import { SampleMap } from "@/components/database/sample-map";
 import { AddSampleDialog } from "@/components/samples/add-sample-dialog";
 import { ImportDialog } from "@/components/samples/import-dialog";
@@ -72,6 +74,13 @@ export default function CollectionSamplesPage() {
   const [error, setError] = useState<string | null>(null);
   const [mapSyncError, setMapSyncError] = useState<string | null>(null);
   const [highlightedSampleId, setHighlightedSampleId] = useState<string | null>(null);
+  // The caller's own role on this collection — drives the Members dialog's
+  // owner-only controls and which edit affordances below show up. The
+  // server-side requireCollectionRole checks on every route are what
+  // actually enforce this; this is just the UI's best-effort mirror.
+  const [role, setRole] = useState<CollectionRole | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const editable = role === "editor" || role === "owner";
 
   const [staged, setStaged] = useState<StagedSample[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -85,8 +94,9 @@ export default function CollectionSamplesPage() {
     Promise.all([
       fetch("/api/collections").then((res) => res.json()),
       fetch(`/api/collections/${collectionId}/samples`).then((res) => res.json()),
+      fetch(`/api/collections/${collectionId}/members`).then((res) => res.json()),
     ])
-      .then(([collectionsData, samplesData]) => {
+      .then(([collectionsData, samplesData, membersData]) => {
         if (collectionsData.errors?.length > 0) {
           setError(collectionsData.errors.join(" "));
           return;
@@ -97,6 +107,7 @@ export default function CollectionSamplesPage() {
           null;
         setCollection(found);
         setSamples(samplesData.samples ?? []);
+        if (membersData.role) setRole(membersData.role);
       })
       .catch(() => setError("Couldn't reach the server."))
       .finally(() => setLoading(false));
@@ -105,6 +116,19 @@ export default function CollectionSamplesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/profile")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.profile?.id) setCurrentUserId(data.profile.id);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const takenIdentifiers = [
     ...samples.map((s) => s.primary_identifier),
@@ -255,6 +279,13 @@ export default function CollectionSamplesPage() {
             <p className="mt-1 text-sm text-muted-foreground">{collection.description}</p>
           )}
         </div>
+        {currentUserId && (
+          <CollectionMembersDialog
+            collectionId={collectionId}
+            currentUserId={currentUserId}
+            viewerRole={role}
+          />
+        )}
       </div>
 
       {mapSyncError && (
@@ -307,16 +338,18 @@ export default function CollectionSamplesPage() {
               hiddenCustomColumnIds={hiddenCustomColumnIds}
               onToggleCustomColumn={toggleCustomColumn}
             />
-            <ManageSampleColumnsDialog
-              columns={customColumns}
-              onSaved={reloadCustomColumns}
-              apiBase={`/api/collections/${collectionId}/custom-columns`}
-              trigger={
-                <Button variant="outline" size="sm">
-                  Manage columns
-                </Button>
-              }
-            />
+            {editable && (
+              <ManageSampleColumnsDialog
+                columns={customColumns}
+                onSaved={reloadCustomColumns}
+                apiBase={`/api/collections/${collectionId}/custom-columns`}
+                trigger={
+                  <Button variant="outline" size="sm">
+                    Manage columns
+                  </Button>
+                }
+              />
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -355,14 +388,16 @@ export default function CollectionSamplesPage() {
                         </TableCell>
                       ))}
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(sample.id, sample.primary_identifier)}
-                        >
-                          Delete
-                        </Button>
+                        {editable && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(sample.id, sample.primary_identifier)}
+                          >
+                            Delete
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -373,41 +408,43 @@ export default function CollectionSamplesPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle>Add samples</CardTitle>
-            <CardDescription>
-              Stage samples here, then upload — same as the main Add samples page, but into
-              this collection&apos;s own table instead of the main database.
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <ImportDialog
-              takenIdentifiers={takenIdentifiers}
-              onStage={stageMany}
-              customColumns={customColumns}
-              onCustomColumnAdded={addColumnLocally}
-              apiBase={`/api/collections/${collectionId}/custom-columns`}
-            />
-            <TemplateDialog selected={visibleOptionalKeys} onToggle={toggleOptionalKey} />
-            <AddSampleDialog
-              visibleOptionalKeys={visibleOptionalKeys}
-              takenIdentifiers={takenIdentifiers}
-              onStage={stageOne}
-              customColumns={customColumns}
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <StagingTable staged={staged} customColumns={customColumns} onRemove={removeStaged} />
-        </CardContent>
-        <CardFooter>
-          <Button onClick={handleUpload} disabled={staged.length === 0 || uploading}>
-            {uploading ? "Uploading..." : `Upload ${staged.length} sample(s) to this collection`}
-          </Button>
-        </CardFooter>
-      </Card>
+      {editable && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle>Add samples</CardTitle>
+              <CardDescription>
+                Stage samples here, then upload — same as the main Add samples page, but into
+                this collection&apos;s own table instead of the main database.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <ImportDialog
+                takenIdentifiers={takenIdentifiers}
+                onStage={stageMany}
+                customColumns={customColumns}
+                onCustomColumnAdded={addColumnLocally}
+                apiBase={`/api/collections/${collectionId}/custom-columns`}
+              />
+              <TemplateDialog selected={visibleOptionalKeys} onToggle={toggleOptionalKey} />
+              <AddSampleDialog
+                visibleOptionalKeys={visibleOptionalKeys}
+                takenIdentifiers={takenIdentifiers}
+                onStage={stageOne}
+                customColumns={customColumns}
+              />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <StagingTable staged={staged} customColumns={customColumns} onRemove={removeStaged} />
+          </CardContent>
+          <CardFooter>
+            <Button onClick={handleUpload} disabled={staged.length === 0 || uploading}>
+              {uploading ? "Uploading..." : `Upload ${staged.length} sample(s) to this collection`}
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
     </div>
   );
 }

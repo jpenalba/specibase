@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCollection, listCollectionSamples, insertCollectionSamplesBulk } from "@/lib/collections-store";
 import { logActivity } from "@/lib/activity-log";
 import { requireUser } from "@/lib/require-user";
+import { requireCollectionRole } from "@/lib/require-collection-role";
 import { RawRow } from "@/lib/validation";
 import { apiError } from "@/lib/api-error";
 
@@ -13,10 +14,8 @@ export async function GET(
     const auth = await requireUser();
     if ("response" in auth) return auth.response;
     const { id } = await params;
-    const collection = await getCollection(id, auth.user.id);
-    if (!collection) {
-      return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
-    }
+    const roleAuth = await requireCollectionRole(auth.user.id, id, "viewer");
+    if ("response" in roleAuth) return roleAuth.response;
     const samples = await listCollectionSamples(id);
     return NextResponse.json({ samples });
   } catch (error) {
@@ -32,7 +31,9 @@ export async function POST(
     const auth = await requireUser();
     if ("response" in auth) return auth.response;
     const { id } = await params;
-    const collection = await getCollection(id, auth.user.id);
+    const roleAuth = await requireCollectionRole(auth.user.id, id, "editor");
+    if ("response" in roleAuth) return roleAuth.response;
+    const collection = await getCollection(id);
     if (!collection) {
       return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
     }

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActivityEntry, markActivityUndone, logActivity } from "@/lib/activity-log";
 import { restoreSample, deleteSample } from "@/lib/samples-store";
-import { restoreCollectionSample, deleteCollectionSample, getCollection } from "@/lib/collections-store";
+import { restoreCollectionSample, deleteCollectionSample } from "@/lib/collections-store";
 import { requireUser } from "@/lib/require-user";
+import { requireCollectionRole } from "@/lib/require-collection-role";
 import { apiError } from "@/lib/api-error";
 
 // Reverses one activity-log entry, dispatched on its undo_data.kind (see
@@ -42,17 +43,15 @@ export async function POST(
         break;
       }
       case "restore_collection_sample": {
-        if (!(await getCollection(data.collectionId, auth.user.id))) {
-          return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
-        }
+        const roleAuth = await requireCollectionRole(auth.user.id, data.collectionId, "editor");
+        if ("response" in roleAuth) return roleAuth.response;
         const result = await restoreCollectionSample(data.collectionId, data.sampleId);
         if (!result.ok) return NextResponse.json({ errors: result.errors }, { status: 400 });
         break;
       }
       case "delete_collection_samples": {
-        if (!(await getCollection(data.collectionId, auth.user.id))) {
-          return NextResponse.json({ errors: ["Collection not found"] }, { status: 404 });
-        }
+        const roleAuth = await requireCollectionRole(auth.user.id, data.collectionId, "editor");
+        if ("response" in roleAuth) return roleAuth.response;
         for (const sampleId of data.sampleIds) {
           await deleteCollectionSample(data.collectionId, sampleId);
         }

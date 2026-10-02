@@ -3,15 +3,18 @@ import { formatDisplayName } from "./profile-store";
 
 const TABLE = "notifications";
 
-// The only kind today — see supabase/migrations/0040_notifications.sql for
-// why `type` is still a real column rather than this being hardcoded.
-export type NotificationType = "project_shared";
+// See supabase/migrations/0040_notifications.sql and
+// 0044_collection_members.sql for why `type` is still a real column rather
+// than this being hardcoded.
+export type NotificationType = "project_shared" | "collection_shared";
 
 export type Notification = {
   id: string;
   type: NotificationType;
   project_id: string | null;
   project_name: string | null;
+  collection_id: string | null;
+  collection_name: string | null;
   actor_name: string | null;
   created_at: string;
 };
@@ -31,13 +34,26 @@ export async function createProjectSharedNotification(
   if (error) throw new Error(error.message);
 }
 
+// Same shape as createProjectSharedNotification above, fired from
+// addMemberAndNotify in collection-members-store.ts.
+export async function createCollectionSharedNotification(
+  userId: string,
+  collectionId: string,
+  actorId: string
+): Promise<void> {
+  const { error } = await getSupabase()
+    .from(TABLE)
+    .insert({ user_id: userId, type: "collection_shared", collection_id: collectionId, actor_id: actorId });
+  if (error) throw new Error(error.message);
+}
+
 // The nav bar's bell — everything still unseen for the signed-in caller,
 // newest first. project_name/actor_name are resolved here rather than left
 // as ids so the bell never needs a second round trip per notification.
 export async function listUnseenNotifications(userId: string): Promise<Notification[]> {
   const { data, error } = await getSupabase()
     .from(TABLE)
-    .select("id, type, created_at, project_id, actor_id, projects(name)")
+    .select("id, type, created_at, project_id, collection_id, actor_id, projects(name), collections(name)")
     .eq("user_id", userId)
     .is("seen_at", null)
     .order("created_at", { ascending: false });
@@ -71,6 +87,8 @@ export async function listUnseenNotifications(userId: string): Promise<Notificat
       type: row.type,
       project_id: row.project_id,
       project_name: (row.projects as unknown as { name: string } | null)?.name ?? null,
+      collection_id: row.collection_id,
+      collection_name: (row.collections as unknown as { name: string } | null)?.name ?? null,
       actor_name: actorName,
       created_at: row.created_at,
     };
