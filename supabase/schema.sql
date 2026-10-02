@@ -82,8 +82,9 @@ create table if not exists samples (
   primary_identifier text not null,
   species text not null,
 
-  -- location: either latitude+longitude or locality is required (not
-  -- each individually) — enforced by the app and mirrored here
+  -- location: all three independently optional (see validation.ts) —
+  -- latitude/longitude must be given together or not at all, enforced
+  -- below by samples_coords_paired.
   latitude double precision check (latitude between -90 and 90),
   longitude double precision check (longitude between -180 and 180),
   locality text,
@@ -117,15 +118,20 @@ create table if not exists samples (
   -- filtered out of every normal read.
   deleted_at timestamptz,
 
-  constraint samples_coords_paired check ((latitude is null) = (longitude is null)),
-  constraint samples_location_required check (
-    (latitude is not null and longitude is not null) or locality is not null
-  ),
-  -- Sample IDs only need to be unique within one account's own database,
-  -- not globally — same idea collection_samples already used below for an
-  -- external collection's own accession numbers.
-  unique (owner_id, primary_identifier)
+  -- Latitude and longitude must either both be given or both left blank —
+  -- locality is independently optional too (see validation.ts; there's no
+  -- DB-level "at least one of coordinates or locality" requirement).
+  constraint samples_coords_paired check ((latitude is null) = (longitude is null))
 );
+
+-- Sample IDs only need to be unique within one account's own database,
+-- not globally — same idea collection_samples uses below for an external
+-- collection's own accession numbers. Partial (deleted_at is null) rather
+-- than a plain unique constraint so a soft-deleted sample's ID is free to
+-- reuse right away — see supabase/migrations/0042_samples_cleanup.sql.
+create unique index if not exists samples_owner_id_primary_identifier_active_idx
+  on samples (owner_id, primary_identifier)
+  where deleted_at is null;
 
 -- Fully user-nameable "Other: specify" fields on samples — see
 -- supabase/migrations/0028_sample_custom_columns.sql. Always scoped to the
@@ -281,12 +287,12 @@ create table if not exists collection_samples (
 
   deleted_at timestamptz,
 
-  constraint collection_samples_coords_paired check ((latitude is null) = (longitude is null)),
-  constraint collection_samples_location_required check (
-    (latitude is not null and longitude is not null) or locality is not null
-  ),
-  unique (collection_id, primary_identifier)
+  constraint collection_samples_coords_paired check ((latitude is null) = (longitude is null))
 );
+
+create unique index if not exists collection_samples_collection_id_primary_identifier_active_idx
+  on collection_samples (collection_id, primary_identifier)
+  where deleted_at is null;
 
 -- Saved GBIF species range layers for the Database page's map — see
 -- src/lib/gbif.ts. No occurrence data is stored here, just which species

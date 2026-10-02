@@ -111,15 +111,17 @@ function attachCustomValues(
   return samples;
 }
 
-// Deliberately not filtered by deleted_at — a soft-deleted sample's ID
-// stays reserved (see deleteSample) so a new sample can't collide with one
-// that might still come back via Undo. Scoped to one owner, since Sample
-// IDs only need to be unique within one account's own database now.
+// Filtered by deleted_at so a deleted sample's ID is free to reuse right
+// away — matches the database's own partial unique index (see
+// supabase/migrations/0042_samples_cleanup.sql). Scoped to one owner,
+// since Sample IDs only need to be unique within one account's own
+// database.
 export async function existingIdentifiers(ownerId: string): Promise<Set<string>> {
   const { data, error } = await getSupabase()
     .from(TABLE)
     .select("primary_identifier")
-    .eq("owner_id", ownerId);
+    .eq("owner_id", ownerId)
+    .is("deleted_at", null);
   if (error) throw new Error(error.message);
   return new Set((data ?? []).map((row) => row.primary_identifier as string));
 }
@@ -321,7 +323,19 @@ export async function restoreSample(id: string, ownerId: string): Promise<Restor
     .not("deleted_at", "is", null)
     .select("id")
     .maybeSingle();
-  if (error) return { ok: false, errors: [error.message] };
+  if (error) {
+    // 23505 = unique_violation — the Sample ID this row used to have was
+    // freed up when it was deleted (see existingIdentifiers above), and
+    // something else has since claimed it. A real conflict, not a bug:
+    // surface it plainly rather than the raw constraint-violation message.
+    if (error.code === "23505") {
+      return {
+        ok: false,
+        errors: ["Can't restore — a sample with this ID already exists. Rename or delete that one first."],
+      };
+    }
+    return { ok: false, errors: [error.message] };
+  }
   if (!data) return { ok: false, errors: ["Sample not found, or wasn't deleted"] };
   return { ok: true };
 }

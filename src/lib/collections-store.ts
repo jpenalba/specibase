@@ -189,11 +189,15 @@ export async function listAllCollectionSamples(ownerId: string): Promise<Collect
   return (data ?? []) as CollectionSample[];
 }
 
+// Filtered by deleted_at so a deleted sample's ID is free to reuse right
+// away — matches the database's own partial unique index (see
+// supabase/migrations/0042_samples_cleanup.sql).
 async function collectionExistingIdentifiers(collectionId: string): Promise<Set<string>> {
   const { data, error } = await getSupabase()
     .from(SAMPLES_TABLE)
     .select("primary_identifier")
-    .eq("collection_id", collectionId);
+    .eq("collection_id", collectionId)
+    .is("deleted_at", null);
   if (error) throw new Error(error.message);
   return new Set((data ?? []).map((row) => row.primary_identifier as string));
 }
@@ -326,7 +330,16 @@ export async function restoreCollectionSample(
     .not("deleted_at", "is", null)
     .select("id")
     .maybeSingle();
-  if (error) return { ok: false, errors: [error.message] };
+  if (error) {
+    // See restoreSample in samples-store.ts for why this can happen now.
+    if (error.code === "23505") {
+      return {
+        ok: false,
+        errors: ["Can't restore — a sample with this ID already exists. Rename or delete that one first."],
+      };
+    }
+    return { ok: false, errors: [error.message] };
+  }
   if (!data) return { ok: false, errors: ["Sample not found, or wasn't deleted"] };
   return { ok: true };
 }
