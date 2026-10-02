@@ -38,7 +38,7 @@ export function TemplateDialog({
             change it any time. Dates should be entered as {DATE_FORMAT_LABEL}.
           </DialogDescription>
         </DialogHeader>
-        <FieldPicker selected={selected} onToggle={onToggle} />
+        <FieldPicker selected={selected} onToggle={onToggle} showRequiredFields />
         <DialogFooter>
           <Button asChild>
             <a href={`/api/samples/template?fields=${selected.join(",")}`}>

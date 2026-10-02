@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { OPTIONAL_FIELDS } from "@/lib/fields";
+import { OPTIONAL_FIELDS, REQUIRED_FIELDS } from "@/lib/fields";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -20,12 +20,32 @@ import {
 export function FieldPicker({
   selected,
   onToggle,
+  showRequiredFields = false,
 }: {
   selected: string[];
   onToggle: (key: string) => void;
+  // Only TemplateDialog passes this — Sample ID and Species rendered as
+  // permanently checked, disabled boxes ahead of the real (toggleable)
+  // list, so it's visually obvious they're always in the download
+  // regardless of anything ticked below. The table-columns picker
+  // (FieldPickerButton) doesn't need this: those two columns are already
+  // unconditionally pinned in the table itself, with nothing to toggle.
+  showRequiredFields?: boolean;
 }) {
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+      {showRequiredFields &&
+        REQUIRED_FIELDS.map((field) => (
+          <div key={field.key} className="flex items-start gap-2">
+            <Checkbox id={`field-${field.key}`} checked disabled className="mt-0.5" />
+            <div className="grid gap-0.5">
+              <Label htmlFor={`field-${field.key}`} className="text-muted-foreground">
+                {field.label}
+              </Label>
+              <span className="text-xs text-muted-foreground">Always included — required</span>
+            </div>
+          </div>
+        ))}
       {OPTIONAL_FIELDS.map((field) => (
         <div key={field.key} className="flex items-start gap-2">
           <Checkbox

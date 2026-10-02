@@ -394,6 +394,25 @@ export default function ProjectSamplesPage() {
       {editable && (
         <Card>
           <CardHeader>
+            <CardTitle>Add new samples</CardTitle>
+            <CardDescription>
+              Stage new samples here, then upload — linked to this project automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AddSamplesPanel
+              fixedProjectId={projectId}
+              onUploaded={load}
+              customColumns={customColumns}
+              onCustomColumnAdded={addColumnLocally}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {editable && (
+        <Card>
+          <CardHeader>
             <CardTitle>Add from the main database</CardTitle>
             <CardDescription>
               Search for samples already in the database and link them to this project.
@@ -412,25 +431,6 @@ export default function ProjectSamplesPage() {
               {linking ? "Linking..." : `Link ${addSelection.size} sample(s)`}
             </Button>
           </CardFooter>
-        </Card>
-      )}
-
-      {editable && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Add new samples</CardTitle>
-            <CardDescription>
-              Stage new samples here, then upload — linked to this project automatically.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AddSamplesPanel
-              fixedProjectId={projectId}
-              onUploaded={load}
-              customColumns={customColumns}
-              onCustomColumnAdded={addColumnLocally}
-            />
-          </CardContent>
         </Card>
       )}
     </div>
