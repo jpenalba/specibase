@@ -6,9 +6,11 @@
 // guess. The separator between the three parts is flexible — a hyphen,
 // slash, backslash, comma, or period are all accepted (and need not
 // match each other within one date) — since that's just typing
-// convenience; the DD-MM-YYYY part order itself never changes.
+// convenience; the DD-MM-YYYY part order itself never changes. The day
+// and month are each one or two digits — "8/9/1996" is accepted and read
+// as 08-09-1996 — so nobody has to remember to zero-pad while typing.
 const SEPARATOR = String.raw`[-/\\.,]`;
-const DATE_PATTERN = new RegExp(`^(\\d{2})${SEPARATOR}(\\d{2})${SEPARATOR}(\\d{4})$`);
+const DATE_PATTERN = new RegExp(`^(\\d{1,2})${SEPARATOR}(\\d{1,2})${SEPARATOR}(\\d{4})$`);
 
 export const DATE_FORMAT_LABEL = "DD-MM-YYYY";
 
@@ -18,8 +20,8 @@ export const DATE_FORMAT_HELP = "DD-MM-YYYY (separators -, /, \\, comma, or peri
 
 // Returns the equivalent ISO date (YYYY-MM-DD) if `value` is a valid
 // DD-MM-YYYY date — with any of -, /, \, comma, or period as the
-// separator — or null if it isn't (wrong shape, or a date that doesn't
-// exist, like 31-02-2026).
+// separator, and the day/month optionally a single digit — or null if it
+// isn't (wrong shape, or a date that doesn't exist, like 31-02-2026).
 export function parseDDMMYYYY(value: string): string | null {
   const match = DATE_PATTERN.exec(value.trim());
   if (!match) return null;
@@ -35,7 +37,8 @@ export function parseDDMMYYYY(value: string): string | null {
     date.getUTCMonth() === month - 1 &&
     date.getUTCDate() === day;
 
-  return roundTrips ? `${yyyy}-${mm}-${dd}` : null;
+  if (!roundTrips) return null;
+  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
 }
 
 // Converts an ISO date (as read back from Postgres) to DD-MM-YYYY — the

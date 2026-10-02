@@ -4,6 +4,7 @@ import { useState } from "react";
 import Papa from "papaparse";
 import { LabWorkflowDetailRow } from "@/lib/lab-workflows-store";
 import { SampleRecord } from "@/lib/samples-store";
+import { CsvFileInput } from "@/components/samples/csv-file-input";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -214,15 +215,7 @@ export function DetailImportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <input
-          type="file"
-          accept=".csv"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
-          }}
-          className="text-sm"
-        />
+        <CsvFileInput onFile={handleFile} />
 
         {parseError && <p className="text-sm text-destructive">{parseError}</p>}
         {importError && <p className="text-sm text-destructive">{importError}</p>}

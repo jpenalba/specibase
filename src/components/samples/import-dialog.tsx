@@ -6,6 +6,7 @@ import { RawRow, validateRow } from "@/lib/validation";
 import { DATE_FORMAT_HELP } from "@/lib/dates";
 import { ALL_FIELDS } from "@/lib/fields";
 import { SampleCustomColumn, customColumnKey } from "@/lib/sample-custom-columns-store";
+import { CsvFileInput } from "./csv-file-input";
 
 // {id, label} is all this component reads off a custom column — generic
 // over it (rather than hardcoding SampleCustomColumn) so Collections'
@@ -190,15 +191,7 @@ export function ImportDialog<Column extends MinimalCustomColumn = SampleCustomCo
           </DialogDescription>
         </DialogHeader>
 
-        <input
-          type="file"
-          accept=".csv"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
-          }}
-          className="text-sm"
-        />
+        <CsvFileInput onFile={handleFile} />
 
         {preview && (
           <>
