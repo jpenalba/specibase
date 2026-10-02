@@ -24,6 +24,18 @@ export type InviteResult =
 // and get wrongly blocked from ever being re-invited. registered_at only
 // gets set once a password has actually been saved (see
 // POST /api/profile/registered, called from /reset-password).
+//
+// The resend itself deletes the stale, unconfirmed auth.users row and
+// invites again from scratch, rather than reusing the password-recovery
+// flow (an earlier version of this did that, but it sends Supabase's
+// "Reset Password" email template, which reads oddly to someone who's
+// never had an account). There's nothing worth keeping on that row — no
+// password, no completed profile — and deleting it makes the email look
+// "new" to Supabase again, so it sends its real Invite template instead.
+// profiles cascades on auth.users delete, and any project_members row
+// from the original invite cascades with it; addMemberByIdentifier
+// re-creates that row under the new user id right after this returns, so
+// nothing is actually lost.
 export async function inviteOrResendEmail(email: string, redirectTo: string): Promise<InviteResult> {
   const { data, error } = await getSupabase().auth.admin.inviteUserByEmail(email, { redirectTo });
   if (!error) {
@@ -42,11 +54,12 @@ export async function inviteOrResendEmail(email: string, redirectTo: string): Pr
     return { ok: false, errors: ["This email already has a Specibase account."] };
   }
 
-  // Still just a pending invite, never actually registered — resend via
-  // the password-recovery flow, which works for any existing account
-  // regardless of confirmation state and lands on the exact same
-  // /reset-password page an invite link does.
-  const { error: resendError } = await getSupabase().auth.resetPasswordForEmail(email, { redirectTo });
-  if (resendError) return { ok: false, errors: [resendError.message] };
-  return { ok: true, userId: profile.id, resent: true };
+  const { error: deleteError } = await getSupabase().auth.admin.deleteUser(profile.id);
+  if (deleteError) return { ok: false, errors: [deleteError.message] };
+
+  const retry = await getSupabase().auth.admin.inviteUserByEmail(email, { redirectTo });
+  if (retry.error || !retry.data.user) {
+    return { ok: false, errors: [retry.error?.message ?? "Couldn't resend the invite"] };
+  }
+  return { ok: true, userId: retry.data.user.id, resent: true };
 }
