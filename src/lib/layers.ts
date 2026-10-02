@@ -38,13 +38,21 @@ export function buildLayers(
   links: SampleProjectLink[],
   styleOverrides?: Map<string, LayerStyle>
 ): { root: MapLayer; children: MapLayer[] } {
+  // `samples` already excludes soft-deleted ones (see readSamples) —
+  // `links` doesn't, since sample_projects has no deleted_at of its own
+  // and a sample's own soft-delete never touches its link rows. Without
+  // this, a project layer's count (sampleIds.size) stayed stale after
+  // deleting every one of its samples: no points left to plot, but the
+  // layer panel still showed the old count from the dangling link rows.
+  const activeSampleIds = new Set(samples.map((s) => s.id));
+
   const rootStyle = styleOverrides?.get(ALL_LAYER_ID);
   const root: MapLayer = {
     id: ALL_LAYER_ID,
     label: "Main database",
     color: rootStyle?.color ?? MAIN_DATABASE_COLOR,
     shape: rootStyle?.shape ?? DEFAULT_LAYER_SHAPE,
-    sampleIds: new Set(samples.map((s) => s.id)),
+    sampleIds: activeSampleIds,
   };
 
   const children: MapLayer[] = projects.map((project, index) => {
@@ -55,7 +63,9 @@ export function buildLayers(
       color: style?.color ?? colorForProjectIndex(index),
       shape: style?.shape ?? DEFAULT_LAYER_SHAPE,
       sampleIds: new Set(
-        links.filter((l) => l.project_id === project.id).map((l) => l.sample_id)
+        links
+          .filter((l) => l.project_id === project.id && activeSampleIds.has(l.sample_id))
+          .map((l) => l.sample_id)
       ),
     };
   });
