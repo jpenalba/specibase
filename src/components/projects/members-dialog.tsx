@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users, X } from "lucide-react";
 import { ProjectMemberWithProfile, ProjectRole, PROJECT_ROLES } from "@/lib/project-members-store";
+import { CollaboratorPicker } from "@/components/collaborators/collaborator-picker";
 import { Avatar } from "@/components/account/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -223,7 +224,7 @@ export function MembersDialog({
           <form onSubmit={handleAdd} className="flex flex-col gap-2 border-t border-border pt-4">
             <Label htmlFor="member-identifier">Add member</Label>
             {addNotice && <p className="text-xs text-muted-foreground">{addNotice}</p>}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Input
                 id="member-identifier"
                 placeholder="Email or username"
@@ -231,6 +232,7 @@ export function MembersDialog({
                 onChange={(e) => setIdentifier(e.target.value)}
                 className="flex-1"
               />
+              <CollaboratorPicker onPick={setIdentifier} />
               <select
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as ProjectRole)}

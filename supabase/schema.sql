@@ -70,6 +70,22 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- A personal address book: people this account often shares projects and
+-- collections with, surfaced as a quick-pick in the Members dialogs
+-- instead of retyping the same email/username every time. See
+-- supabase/migrations/0045_collaborators.sql. Directional and manually
+-- maintained — has no effect on any project's or collection's actual
+-- membership, and vice versa.
+create table if not exists collaborators (
+  user_id uuid not null references profiles (id) on delete cascade,
+  collaborator_id uuid not null references profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, collaborator_id),
+  constraint collaborators_not_self check (user_id <> collaborator_id)
+);
+
+create index if not exists collaborators_collaborator_id_idx on collaborators (collaborator_id);
+
 create table if not exists samples (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
@@ -779,6 +795,7 @@ create index if not exists bio_workflow_detail_values_row_id_idx on bio_workflow
 -- do, using the service role key, which bypasses RLS) — this just makes
 -- sure that stays true if an anon-key client ever gets added by mistake.
 alter table profiles enable row level security;
+alter table collaborators enable row level security;
 alter table samples enable row level security;
 alter table sample_custom_columns enable row level security;
 alter table sample_custom_values enable row level security;

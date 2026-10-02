@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { CurrentUser } from "@/lib/current-user";
 import { Profile, formatDisplayName } from "@/lib/profile-store";
@@ -20,6 +21,7 @@ import { Avatar } from "./avatar";
 // (summary + an edit entry point) first, then other account-level actions
 // (inviting someone else to Specibase, user settings, sign out) below.
 export function AccountMenu({ user }: { user: CurrentUser }) {
+  const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -83,6 +85,7 @@ export function AccountMenu({ user }: { user: CurrentUser }) {
           )}
           <DropdownMenuItem onSelect={() => setDialogOpen(true)}>Edit profile</DropdownMenuItem>
           <div className="my-1 h-px bg-border" />
+          <DropdownMenuItem onSelect={() => router.push("/collaborators")}>Collaborators</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setInviteOpen(true)}>Invite other users</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>User settings</DropdownMenuItem>
           <div className="my-1 h-px bg-border" />
