@@ -1,57 +1,155 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// Where a password-reset email's link lands — reachable signed out AND
-// signed in (see middleware.ts's PUBLIC_NO_BOUNCE_PATHS), since both
-// "forgot password" and User settings' "change password" send this same
-// link. The link itself carries a short-lived "recovery" session that the
-// Supabase browser client picks up from the URL as soon as it's created
-// (detectSessionInUrl, on by default) — that's what actually authorizes
+type LinkType = "invite" | "recovery";
+
+// Supabase appends `type=invite` or `type=recovery` to this page's URL
+// alongside the session tokens — as a hash fragment (#...&type=invite) in
+// the implicit flow, or a query param (?code=...&type=invite) under PKCE.
+// Checked in both places since this app doesn't control which flow a given
+// Supabase project uses. Unknown/missing type falls back to "recovery",
+// matching this page's original (pre-invite) behavior.
+function parseLinkType(): LinkType {
+  if (typeof window === "undefined") return "recovery";
+  const fromHash = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("type");
+  const fromQuery = new URLSearchParams(window.location.search).get("type");
+  return (fromHash ?? fromQuery) === "invite" ? "invite" : "recovery";
+}
+
+function base64UrlDecode(input: string): string {
+  const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+  return atob(padded);
+}
+
+// Best-effort, display-only — reads the target account's email straight
+// out of the access_token JWT already sitting in the URL (implicit flow
+// only; PKCE's opaque `code` can't be read this way), without calling
+// Supabase or establishing any session. Used only to tell "this link is
+// for the account already signed in on this browser" (safe to proceed
+// without asking) apart from "this link is for someone else" (see the
+// sign-out prompt below) — never for anything security-sensitive, since
+// nothing here is signature-verified.
+function parseLinkEmail(): string | null {
+  if (typeof window === "undefined") return null;
+  const token = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("access_token");
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(base64UrlDecode(token.split(".")[1]));
+    return typeof payload.email === "string" ? payload.email : null;
+  } catch {
+    return null;
+  }
+}
+
+// Where a password-reset or invite email's link lands — reachable signed
+// out AND signed in (see middleware.ts's PUBLIC_NO_BOUNCE_PATHS), since
+// "forgot password", an invite, and User settings' "change password" all
+// send a link here. The link itself carries a short-lived session that the
+// Supabase browser client picks up from the URL as soon as a client with
+// detectSessionInUrl enabled is created — that's what actually authorizes
 // the updateUser() call below, not whatever session (if any) was already
 // in this browser.
 export default function ResetPasswordPage() {
-  const [checking, setChecking] = useState(true);
-  const [ready, setReady] = useState(false);
+  const [linkType] = useState<LinkType>(() => parseLinkType());
+  const [linkEmail] = useState<string | null>(() => parseLinkEmail());
+
+  const [phase, setPhase] = useState<"checking" | "conflict" | "ready" | "expired">("checking");
+  const [conflictEmail, setConflictEmail] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Guards every setPhase call below against firing after unmount — shared
+  // across the initial effect and handleSignOutAndContinue's own re-run of
+  // the same session-establishing logic, so neither path needs its own
+  // bespoke cancellation handling.
+  const mountedRef = useRef(true);
   useEffect(() => {
-    // getSupabaseBrowserClient() throws synchronously if the app's Supabase
-    // env vars aren't set — an unlikely but real edge case (an old reset
-    // link outliving a deployment that's since had login turned off) that
-    // would otherwise crash this whole page instead of just showing the
-    // "link expired" state below.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Applies this link's tokens and waits for the resulting session — only
+  // called once it's established that doing so won't silently replace
+  // someone else's active session (see the precheck in the effect below,
+  // and handleSignOutAndContinue which calls this again once that
+  // conflicting session is out of the way).
+  function startSession() {
     let supabase;
     try {
       supabase = getSupabaseBrowserClient();
     } catch {
-      // Deferred, not called directly in the effect body — same as the
-      // setChecking(false) calls below, which run inside .then() callbacks.
-      Promise.resolve().then(() => setChecking(false));
+      Promise.resolve().then(() => {
+        if (mountedRef.current) setPhase("expired");
+      });
       return;
     }
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" || session) {
-        setReady(true);
-        setChecking(false);
-      }
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (!mountedRef.current) return;
+      if (event === "PASSWORD_RECOVERY" || session) setPhase("ready");
     });
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true);
-      setChecking(false);
+      if (!mountedRef.current) return;
+      if (session) setPhase("ready");
+      else setPhase((prev) => (prev === "checking" ? "expired" : prev));
     });
-    return () => subscription.unsubscribe();
+  }
+
+  useEffect(() => {
+    // A client that deliberately doesn't auto-consume this link's tokens
+    // yet — just long enough to see whether *another* session was already
+    // active in this browser before this link landed, so the person can be
+    // asked before it gets silently replaced. Skipped (the link's session
+    // applied immediately, as before) when the account signed in already
+    // matches who this link is actually for — the ordinary "change my own
+    // password while logged in" case from User settings, which shouldn't
+    // need an extra prompt.
+    let precheck;
+    try {
+      precheck = getSupabaseBrowserClient({ detectSessionInUrl: false });
+    } catch {
+      Promise.resolve().then(() => {
+        if (mountedRef.current) setPhase("expired");
+      });
+      return;
+    }
+    precheck.auth.getSession().then(({ data: { session: existing } }) => {
+      if (!mountedRef.current) return;
+      const existingEmail = existing?.user.email ?? null;
+      if (existingEmail && existingEmail !== linkEmail) {
+        setConflictEmail(existingEmail);
+        setPhase("conflict");
+        return;
+      }
+      startSession();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleSignOutAndContinue() {
+    setSigningOut(true);
+    try {
+      await getSupabaseBrowserClient({ detectSessionInUrl: false }).auth.signOut();
+    } catch {
+      // Proceed regardless — establishing the new session below is what
+      // actually matters, and it'll succeed or fail on its own.
+    }
+    setConflictEmail(null);
+    setPhase("checking");
+    setSigningOut(false);
+    startSession();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,11 +169,11 @@ export default function ResetPasswordPage() {
         setError(error.message);
         return;
       }
-      // Best-effort — see profile-store.ts's registered_at. A failure here
-      // just means a future re-invite to this email might wrongly trust
-      // Supabase's own (too-early) confirmation flag instead, not that
-      // anything about *this* password change failed.
-      fetch("/api/profile/registered", { method: "POST" }).catch(() => {});
+      if (linkType === "invite") {
+        // Best-effort, same as any other completed sign-up — see
+        // profile-store.ts's registered_at.
+        await fetch("/api/profile/registered", { method: "POST" }).catch(() => {});
+      }
       // A full navigation, not router.push — proxy.ts and every Server
       // Component need to see the session the recovery flow just
       // finalized, which a client-side route transition wouldn't re-fetch
@@ -89,7 +187,7 @@ export default function ResetPasswordPage() {
     }
   }
 
-  if (checking) {
+  if (phase === "checking") {
     return (
       <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6">
         <p className="text-sm text-muted-foreground">Loading...</p>
@@ -97,14 +195,37 @@ export default function ResetPasswordPage() {
     );
   }
 
-  if (!ready) {
+  if (phase === "conflict") {
+    return (
+      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6">
+        <div>
+          <h1 className="text-2xl font-semibold">You&apos;re already signed in</h1>
+          <p className="text-sm text-muted-foreground">
+            This browser is currently signed in as <strong>{conflictEmail}</strong>.{" "}
+            {linkType === "invite"
+              ? "To create this new account, you'll"
+              : "To continue, you'll"}{" "}
+            need to sign out of that one first.
+          </p>
+        </div>
+        <Button onClick={handleSignOutAndContinue} disabled={signingOut}>
+          {signingOut ? "Signing out..." : "Sign out and continue"}
+        </Button>
+        <Link href="/" className="text-xs text-muted-foreground hover:underline">
+          Stay signed in as {conflictEmail}
+        </Link>
+      </div>
+    );
+  }
+
+  if (phase === "expired") {
     return (
       <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6">
         <div>
           <h1 className="text-2xl font-semibold">Link expired</h1>
           <p className="text-sm text-muted-foreground">
-            This password reset link is invalid or has expired — links only work once and for a
-            limited time.
+            This {linkType === "invite" ? "invite" : "password reset"} link is invalid or has
+            expired — links only work once and for a limited time.
           </p>
         </div>
         <Button asChild>
@@ -117,8 +238,14 @@ export default function ResetPasswordPage() {
   return (
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold">Set a new password</h1>
-        <p className="text-sm text-muted-foreground">Choose a new password for your account.</p>
+        <h1 className="text-2xl font-semibold">
+          {linkType === "invite" ? "Create your account" : "Set a new password"}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {linkType === "invite"
+            ? "Choose a password to finish setting up your Specibase account."
+            : "Choose a new password for your account."}
+        </p>
       </div>
 
       {error && (
@@ -129,7 +256,7 @@ export default function ResetPasswordPage() {
 
       <form onSubmit={handleSubmit} className="grid gap-4">
         <div className="grid gap-1.5">
-          <Label htmlFor="new-password">New password</Label>
+          <Label htmlFor="new-password">{linkType === "invite" ? "Password" : "New password"}</Label>
           <Input
             id="new-password"
             type="password"
@@ -151,7 +278,13 @@ export default function ResetPasswordPage() {
           />
         </div>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Saving..." : "Set new password"}
+          {submitting
+            ? linkType === "invite"
+              ? "Creating account..."
+              : "Saving..."
+            : linkType === "invite"
+              ? "Create account"
+              : "Set new password"}
         </Button>
       </form>
     </div>
