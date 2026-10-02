@@ -55,7 +55,7 @@ export default function ProjectSamplesPage() {
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
 
-  const { selected, toggle } = useOptionalFields();
+  const { selected, toggle } = useOptionalFields(projectId);
   const { columns: customColumns, addColumnLocally, reload: reloadCustomColumns } = useSampleCustomColumns(projectId);
   const popupColumns = useMemo(
     () => [...getVisibleColumns(selected), ...customColumns.map(customColumnToFieldDef)],

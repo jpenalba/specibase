@@ -48,7 +48,7 @@ export function AddSamplesPanel({
   customColumns?: SampleCustomColumn[];
   onCustomColumnAdded?: (column: SampleCustomColumn) => void;
 }) {
-  const { selected, toggle } = useOptionalFields();
+  const { selected, toggle } = useOptionalFields(fixedProjectId);
   const [dbIdentifiers, setDbIdentifiers] = useState<string[]>([]);
   const [staged, setStaged] = useState<StagedSample[]>([]);
   const [projectSelection, setProjectSelection] = useState<ProjectSelection>({ mode: "none" });

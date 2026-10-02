@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { MoreHorizontal, Search, Trash2, X } from "lucide-react";
 import { getVisibleColumns, FieldDef } from "@/lib/fields";
 import { DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
@@ -120,6 +120,16 @@ export function SampleTable({
     setEditDialogKey((k) => k + 1);
   }
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  // Edit mode's own selection for bulk delete — a separate set from
+  // hiddenSampleIds (the same tick boxes mean "hide from map" outside edit
+  // mode) so entering/leaving edit mode never mixes the two up. Cleared
+  // every time edit mode is freshly entered, so nothing carries over from
+  // a previous editing session.
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  useEffect(() => {
+    if (editMode) Promise.resolve().then(() => setSelectedForDelete(new Set()));
+  }, [editMode]);
   // Only rows the user has actually touched get an entry — everything else
   // still reads live from `samples`, so switching which optional columns
   // are visible mid-edit never clobbers an in-progress change.
@@ -308,6 +318,59 @@ export function SampleTable({
     onSampleDeleted(sample.id);
   }
 
+  function toggleSelectedForDelete(id: string) {
+    setSelectedForDelete((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Selects every row in the current filtered/sorted result set, not just
+  // the current page — the point of bulk delete is often "everything
+  // matching this search," and pagination shouldn't cap that. The warning
+  // before deleting (see handleBulkDelete) is what keeps this safe.
+  function selectAllForDelete() {
+    setSelectedForDelete(new Set(sortedSamples.map((s) => s.id)));
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selectedForDelete];
+    if (ids.length === 0) return;
+    const identifiers = samples
+      .filter((s) => selectedForDelete.has(s.id))
+      .map((s) => s.primary_identifier);
+    const preview =
+      identifiers.length > 10
+        ? `${identifiers.slice(0, 10).join(", ")}, and ${identifiers.length - 10} more`
+        : identifiers.join(", ");
+    if (
+      !window.confirm(
+        `Delete ${ids.length} selected sample(s)? (${preview}) This can't be undone.`
+      )
+    ) {
+      return;
+    }
+    setBulkDeleting(true);
+    const failedIds = new Set<string>();
+    for (const id of ids) {
+      const result = await deleteSampleRequest(id);
+      if (result.ok) {
+        onSampleDeleted(id);
+      } else {
+        failedIds.add(id);
+      }
+    }
+    setSelectedForDelete(failedIds);
+    setBulkDeleting(false);
+    if (failedIds.size > 0) {
+      window.alert(
+        `Couldn't delete ${failedIds.size} sample(s). They're still selected — try again.`
+      );
+    }
+  }
+
   if (samples.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
@@ -376,9 +439,20 @@ export function SampleTable({
         <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
             Editing — click a cell to change it, drag its bottom-right corner to fill others, or
-            use the trash icon to delete a row. Sample ID can&apos;t be edited.
+            use the trash icon to delete a row. Tick boxes on the left to delete several at once.
+            Sample ID can&apos;t be edited.
           </span>
           <div className="flex gap-2">
+            {selectedForDelete.size > 0 && (
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
+              >
+                {bulkDeleting ? "Deleting..." : `Delete selected (${selectedForDelete.size})`}
+              </button>
+            )}
             <button
               type="button"
               onClick={cancelEdits}
@@ -409,7 +483,17 @@ export function SampleTable({
           <TableHeader>
             <TableRow>
               <TableHead className="h-8 w-0">
-                <span className="sr-only">Show on map</span>
+                {editMode ? (
+                  <button
+                    type="button"
+                    onClick={selectAllForDelete}
+                    className="text-xs whitespace-nowrap text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    Select all
+                  </button>
+                ) : (
+                  <span className="sr-only">Show on map</span>
+                )}
               </TableHead>
               {columns.map((col) => (
                 <TableHead key={col.key} className="h-8">
@@ -443,11 +527,19 @@ export function SampleTable({
                     className={cn(!editMode && "cursor-pointer")}
                   >
                     <TableCell className="py-1" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={!isHidden}
-                        onCheckedChange={() => onToggleHidden(sample.id)}
-                        aria-label={`Show ${sample.id} on the map`}
-                      />
+                      {editMode ? (
+                        <Checkbox
+                          checked={selectedForDelete.has(sample.id)}
+                          onCheckedChange={() => toggleSelectedForDelete(sample.id)}
+                          aria-label={`Select ${sample.primary_identifier} for deletion`}
+                        />
+                      ) : (
+                        <Checkbox
+                          checked={!isHidden}
+                          onCheckedChange={() => onToggleHidden(sample.id)}
+                          aria-label={`Show ${sample.id} on the map`}
+                        />
+                      )}
                     </TableCell>
                     {columns.map((col) => {
                       if (editMode) {
