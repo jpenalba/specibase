@@ -419,6 +419,7 @@ export function WorkflowSection({
             <>
               <ManageSamplesDialog
                 workflowId={workflowId}
+                projectId={projectId}
                 allSamples={allSamples}
                 enrolledIds={enrolledIds}
                 onSaved={load}
@@ -519,6 +520,7 @@ export function WorkflowSection({
           <p>No samples enrolled yet.</p>
           <ManageSamplesDialog
             workflowId={workflowId}
+            projectId={projectId}
             allSamples={allSamples}
             enrolledIds={enrolledIds}
             onSaved={load}

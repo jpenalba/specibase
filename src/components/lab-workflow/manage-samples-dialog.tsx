@@ -22,6 +22,7 @@ import {
 // batch and a whole-genome batch) can track different sample sets.
 export function ManageSamplesDialog({
   workflowId,
+  projectId,
   allSamples,
   enrolledIds,
   onSaved,
@@ -29,6 +30,10 @@ export function ManageSamplesDialog({
   apiBase = "/api/lab-workflows",
 }: {
   workflowId: string;
+  // Scopes the "add" picker to this project's own samples — enrolling a
+  // sample from outside the project is rejected server-side regardless, so
+  // it should never be selectable here in the first place.
+  projectId: string;
   allSamples: SampleRecord[];
   enrolledIds: Set<string>;
   onSaved: () => void;
@@ -150,7 +155,12 @@ export function ManageSamplesDialog({
           </div>
         </div>
 
-        <SamplePicker selectedIds={addSelection} onChange={setAddSelection} excludeIds={enrolledIds} />
+        <SamplePicker
+          selectedIds={addSelection}
+          onChange={setAddSelection}
+          excludeIds={enrolledIds}
+          projectId={projectId}
+        />
 
         <DialogFooter>
           <Button type="button" onClick={handleAdd} disabled={addSelection.size === 0 || busy}>

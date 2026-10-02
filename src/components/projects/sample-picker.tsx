@@ -16,12 +16,22 @@ export function SamplePicker({
   selectedIds,
   onChange,
   excludeIds,
+  projectId,
 }: {
   selectedIds: Set<string>;
   onChange: (ids: Set<string>) => void;
   // Samples to leave out of the list entirely — e.g. ones already linked
   // to the project this picker is adding to.
   excludeIds?: Set<string>;
+  // Restricts the fetched list to one project's own samples instead of
+  // every sample the account has — e.g. a Lab/Bioinformatic workflow's
+  // "Manage samples" dialog, which can only ever enroll a sample already
+  // linked to that same project (enrolling anything else is rejected
+  // server-side regardless, so showing it here was always a dead end).
+  // Omit this for the Samples tab's own "Add from the main database"
+  // picker, which is deliberately account-wide — that's how a sample
+  // gets linked to a project in the first place.
+  projectId?: string;
 }) {
   const [samples, setSamples] = useState<SampleOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +41,8 @@ export function SamplePicker({
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/samples")
+    const url = projectId ? `/api/projects/${projectId}/samples` : "/api/samples";
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
@@ -54,7 +65,7 @@ export function SamplePicker({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [projectId]);
 
   const selectable = useMemo(
     () => (excludeIds ? samples.filter((s) => !excludeIds.has(s.id)) : samples),
