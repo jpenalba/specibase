@@ -18,21 +18,19 @@ export const REQUIRED_FIELDS: FieldDef[] = [
   { key: "species", label: "Species", type: "text" },
 ];
 
-// Not each individually required, but the group as a whole is: either
-// latitude+longitude or locality must be provided (see validateRow).
-// Always shown together and never part of the optional-field toggle —
-// hiding all three would make it impossible to satisfy that requirement.
-export const LOCATION_FIELDS: FieldDef[] = [
-  { key: "latitude", label: "Latitude", type: "number" },
-  { key: "longitude", label: "Longitude", type: "number" },
-  { key: "locality", label: "Locality", type: "text" },
-];
-
 // Everything else is opt-in per lab/project: tick which of these to
 // show as table columns and include in the downloadable CSV template.
 // Add more entries here as the lab's workflow needs grow — nothing
 // else in the app needs to change to pick up a new optional field.
 export const OPTIONAL_FIELDS: FieldDef[] = [
+  { key: "latitude", label: "Latitude", type: "number" },
+  { key: "longitude", label: "Longitude", type: "number" },
+  {
+    key: "locality",
+    label: "Locality",
+    type: "text",
+    description: "A place name — not required even if latitude/longitude are left blank",
+  },
   {
     key: "subspecies",
     label: "Subspecies",
@@ -101,18 +99,19 @@ export const OPTIONAL_FIELDS: FieldDef[] = [
 ];
 
 // Pre-ticked when someone first opens the app; still fully editable.
+// Latitude/longitude lead the list even though they're not required —
+// most labs do have coordinates and want them visible by default; locality
+// is left off since it's redundant with coordinates for most uploads.
 export const DEFAULT_OPTIONAL_KEYS = [
+  "latitude",
+  "longitude",
   "collection_date",
   "country",
   "secondary_number",
   "notes",
 ];
 
-export const ALL_FIELDS: FieldDef[] = [
-  ...REQUIRED_FIELDS,
-  ...LOCATION_FIELDS,
-  ...OPTIONAL_FIELDS,
-];
+export const ALL_FIELDS: FieldDef[] = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS];
 
 export function optionalFieldByKey(key: string): FieldDef | undefined {
   return OPTIONAL_FIELDS.find((f) => f.key === key);
@@ -139,7 +138,6 @@ export function markerStyleFieldByKey(key: string): FieldDef | undefined {
 export function getVisibleColumns(visibleOptionalKeys: string[]): FieldDef[] {
   return [
     ...REQUIRED_FIELDS,
-    ...LOCATION_FIELDS,
     ...visibleOptionalKeys
       .map((key) => optionalFieldByKey(key))
       .filter((f): f is FieldDef => Boolean(f)),

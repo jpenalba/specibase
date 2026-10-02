@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { REQUIRED_FIELDS, LOCATION_FIELDS, OPTIONAL_FIELDS, ALL_FIELDS } from "@/lib/fields";
+import { REQUIRED_FIELDS, OPTIONAL_FIELDS, ALL_FIELDS } from "@/lib/fields";
 import { DATE_FORMAT_LABEL } from "@/lib/dates";
 import { RawRow, validateRow } from "@/lib/validation";
 import { SampleRecord, sampleToRawRow } from "@/lib/samples-store";
@@ -155,24 +155,6 @@ export function SampleEditDialog({
                 )}
               </div>
             ))}
-          </div>
-
-          <div className="grid gap-3 rounded-md border border-border p-3">
-            <p className="text-xs text-muted-foreground">
-              Provide either latitude &amp; longitude, or a locality.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              {LOCATION_FIELDS.map((field) => (
-                <div key={field.key} className="grid gap-1.5">
-                  <Label htmlFor={`edit-${field.key}`}>{field.label}</Label>
-                  <Input
-                    id={`edit-${field.key}`}
-                    value={values[field.key] ?? ""}
-                    onChange={(e) => update(field.key, e.target.value)}
-                  />
-                </div>
-              ))}
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -60,9 +60,9 @@ export function validateRow(
     errors.push("Species is required");
   }
 
-  // Coordinates aren't required on their own — plenty of experimental work
-  // has no meaningful lat/lon — but every sample needs to be locatable
-  // *somehow*, so either both coordinates or a locality must be given.
+  // Location is entirely optional — Sample ID and Species are the only
+  // required fields. Latitude/longitude/locality are just format-checked
+  // when they're actually given.
   const latProvided = !isBlank(row.latitude);
   const lonProvided = !isBlank(row.longitude);
   const localityProvided = !isBlank(row.locality);
@@ -88,8 +88,6 @@ export function validateRow(
     if (Number.isNaN(lng) || lng < -180 || lng > 180) {
       errors.push("Longitude must be a number between -180 and 180");
     }
-  } else if (!localityProvided) {
-    errors.push("Provide either latitude & longitude, or a locality");
   }
 
   for (const field of OPTIONAL_FIELDS) {
@@ -111,12 +109,5 @@ export function buildTemplateHeaders(selectedOptionalKeys: string[]): string[] {
   const optional = OPTIONAL_FIELDS.filter((f) =>
     selectedOptionalKeys.includes(f.key)
   ).map((f) => f.key);
-  return [
-    "primary_identifier",
-    "species",
-    "latitude",
-    "longitude",
-    "locality",
-    ...optional,
-  ];
+  return ["primary_identifier", "species", ...optional];
 }

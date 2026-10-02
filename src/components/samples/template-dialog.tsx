@@ -32,10 +32,10 @@ export function TemplateDialog({
         <DialogHeader>
           <DialogTitle>Download CSV template</DialogTitle>
           <DialogDescription>
-            Sample ID, species, latitude, and longitude are always included.
-            Tick any other columns your lab wants in the template — this is
-            the same set shown in the table, and you can change it any time.
-            Dates should be entered as {DATE_FORMAT_LABEL}.
+            Sample ID and species are the only required columns, and are
+            always included. Tick any other columns your lab wants in the
+            template — this is the same set shown in the table, and you can
+            change it any time. Dates should be entered as {DATE_FORMAT_LABEL}.
           </DialogDescription>
         </DialogHeader>
         <FieldPicker selected={selected} onToggle={onToggle} />

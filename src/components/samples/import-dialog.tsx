@@ -166,10 +166,9 @@ export function ImportDialog({
           <DialogTitle>Import samples from CSV</DialogTitle>
           <DialogDescription>
             This stages rows below — nothing is saved to the database until
-            you upload the staged batch. Sample ID and species are required;
-            provide either latitude &amp; longitude or a locality; dates must
-            be {DATE_FORMAT_LABEL}. Duplicate Sample IDs block the whole file
-            rather than being skipped.
+            you upload the staged batch. Sample ID and species are the only
+            required columns; dates must be {DATE_FORMAT_LABEL}. Duplicate
+            Sample IDs block the whole file rather than being skipped.
           </DialogDescription>
         </DialogHeader>
 

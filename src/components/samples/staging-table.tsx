@@ -1,6 +1,6 @@
 "use client";
 
-import { REQUIRED_FIELDS, LOCATION_FIELDS, optionalFieldByKey } from "@/lib/fields";
+import { REQUIRED_FIELDS, optionalFieldByKey } from "@/lib/fields";
 import { RawRow } from "@/lib/validation";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +25,6 @@ export function StagingTable({
 }) {
   const columns = [
     ...REQUIRED_FIELDS,
-    ...LOCATION_FIELDS,
     ...visibleOptionalKeys
       .map((key) => optionalFieldByKey(key))
       .filter((f): f is NonNullable<typeof f> => Boolean(f)),
