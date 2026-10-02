@@ -294,6 +294,34 @@ create unique index if not exists collection_samples_collection_id_primary_ident
   on collection_samples (collection_id, primary_identifier)
   where deleted_at is null;
 
+-- Fully user-nameable "Other: specify" fields for a collection's own
+-- samples — see supabase/migrations/0043_collection_custom_columns.sql.
+-- Always scoped to one collection (unlike sample_custom_columns' optional
+-- project scope above), since collection_samples has no account-wide
+-- "plain Database page" equivalent to default to.
+create table if not exists collection_custom_columns (
+  id uuid primary key default gen_random_uuid(),
+  collection_id uuid not null references collections (id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  position integer not null,
+  label text not null
+);
+
+create table if not exists collection_custom_values (
+  id uuid primary key default gen_random_uuid(),
+  column_id uuid not null references collection_custom_columns (id) on delete cascade,
+  sample_id uuid not null references collection_samples (id) on delete cascade,
+  updated_at timestamptz not null default now(),
+
+  value text,
+
+  unique (column_id, sample_id)
+);
+
+create index if not exists collection_custom_columns_collection_id_idx on collection_custom_columns (collection_id);
+create index if not exists collection_custom_values_sample_id_idx on collection_custom_values (sample_id);
+
 -- Saved GBIF species range layers for the Database page's map — see
 -- src/lib/gbif.ts. No occurrence data is stored here, just which species
 -- and which color style to request occurrence-density tiles in.
@@ -743,6 +771,8 @@ alter table project_members enable row level security;
 alter table sample_projects enable row level security;
 alter table collections enable row level security;
 alter table collection_samples enable row level security;
+alter table collection_custom_columns enable row level security;
+alter table collection_custom_values enable row level security;
 alter table gbif_species_layers enable row level security;
 alter table lab_workflows enable row level security;
 alter table lab_workflow_steps enable row level security;

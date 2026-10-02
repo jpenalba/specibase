@@ -40,8 +40,11 @@ export function customColumnIdFromKey(key: string): string | null {
 
 // A runtime FieldDef for a custom column — always "text", since unlike a
 // preset field there's no fixed vocabulary to type-check against, which is
-// the whole point of an "Other: specify" field.
-export function customColumnToFieldDef(column: SampleCustomColumn): FieldDef {
+// the whole point of an "Other: specify" field. Takes just {id, label}
+// (not the full SampleCustomColumn) so collection-custom-columns-store.ts's
+// own, differently-shaped column type can reuse this instead of
+// duplicating it.
+export function customColumnToFieldDef(column: { id: string; label: string }): FieldDef {
   return { key: customColumnKey(column.id), label: column.label, type: "text" };
 }
 

@@ -129,6 +129,29 @@ export async function addLabNoteImage(
   return data as NoteImage;
 }
 
+export type UpdateNoteImageInput = { title?: string; notes?: string };
+
+// Only title/caption are editable after the fact — the image file and its
+// created_at (the date shown on it) are set once, same as a notebook
+// block's own update function above.
+export async function updateLabNoteImage(
+  id: string,
+  input: UpdateNoteImageInput
+): Promise<NoteImage> {
+  const patch: Record<string, unknown> = {};
+  if (input.title !== undefined) patch.title = input.title.trim();
+  if (input.notes !== undefined) patch.notes = input.notes.trim() || null;
+
+  const { data, error } = await getSupabase()
+    .from(IMAGES_TABLE)
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as NoteImage;
+}
+
 export async function deleteLabNoteImage(id: string): Promise<void> {
   const { error } = await getSupabase().from(IMAGES_TABLE).delete().eq("id", id);
   if (error) throw new Error(error.message);

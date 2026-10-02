@@ -2,11 +2,7 @@
 
 import { REQUIRED_FIELDS, OPTIONAL_FIELDS, FieldDef } from "@/lib/fields";
 import { RawRow } from "@/lib/validation";
-import {
-  SampleCustomColumn,
-  customColumnKey,
-  customColumnToFieldDef,
-} from "@/lib/sample-custom-columns-store";
+import { customColumnKey, customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -19,6 +15,10 @@ import {
 
 export type StagedSample = { clientId: string; row: RawRow };
 
+// {id, label} is all this reads off a custom column — Collections'
+// CollectionCustomColumn fits here too, not just SampleCustomColumn.
+type MinimalCustomColumn = { id: string; label: string };
+
 // The columns to show are whatever's actually present across the staged
 // rows — not the app's persisted "Columns" picker setting. A downloaded
 // template column that got deleted before upload shouldn't show up just
@@ -27,7 +27,7 @@ export type StagedSample = { clientId: string; row: RawRow };
 // two required fields first, then known fields in their usual order, then
 // custom columns, then (shouldn't normally happen — see ImportDialog's own
 // handling of unrecognized headers) anything left over under its raw key.
-function stagedColumns(staged: StagedSample[], customColumns: SampleCustomColumn[]): FieldDef[] {
+function stagedColumns(staged: StagedSample[], customColumns: MinimalCustomColumn[]): FieldDef[] {
   const presentKeys = new Set<string>();
   for (const { row } of staged) {
     for (const key of Object.keys(row)) presentKeys.add(key);
@@ -56,7 +56,7 @@ export function StagingTable({
   onRemove,
 }: {
   staged: StagedSample[];
-  customColumns?: SampleCustomColumn[];
+  customColumns?: MinimalCustomColumn[];
   onRemove: (clientId: string) => void;
 }) {
   const columns = stagedColumns(staged, customColumns);

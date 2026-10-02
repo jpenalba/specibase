@@ -3,6 +3,12 @@ import { RawRow, validateRow } from "./validation";
 import { normalizeDatesForStorage } from "./samples-store";
 import { CollectionType } from "./collection-types";
 import { matchGbifSpeciesBatch, applyGbifClassificationToRow } from "./gbif";
+import {
+  customColumnIdFromKey,
+  customColumnKey,
+  listCollectionCustomValues,
+  upsertCollectionCustomValues,
+} from "./collection-custom-columns-store";
 
 const COLLECTIONS_TABLE = "collections";
 const SAMPLES_TABLE = "collection_samples";
@@ -163,6 +169,30 @@ export type CollectionSample = {
   [optionalField: string]: string | number | undefined;
 };
 
+// Merges "Other: specify" custom field values onto their sample under
+// `custom:<column id>` — see collection-custom-columns-store.ts — same
+// convention samples-store.ts's own attachCustomValues uses, so the
+// table, CSV export, etc. can all read one via plain `sample[key]`, same
+// as any preset field.
+function attachCustomValues(
+  samples: CollectionSample[],
+  values: { column_id: string; sample_id: string; value: string | null }[]
+): CollectionSample[] {
+  if (values.length === 0) return samples;
+  const bySampleId = new Map<string, { column_id: string; value: string | null }[]>();
+  for (const v of values) {
+    const list = bySampleId.get(v.sample_id) ?? [];
+    list.push(v);
+    bySampleId.set(v.sample_id, list);
+  }
+  for (const sample of samples) {
+    for (const v of bySampleId.get(sample.id) ?? []) {
+      if (v.value !== null) sample[customColumnKey(v.column_id)] = v.value;
+    }
+  }
+  return samples;
+}
+
 export async function listCollectionSamples(collectionId: string): Promise<CollectionSample[]> {
   const { data, error } = await getSupabase()
     .from(SAMPLES_TABLE)
@@ -171,7 +201,8 @@ export async function listCollectionSamples(collectionId: string): Promise<Colle
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []) as CollectionSample[];
+  const samples = (data ?? []) as CollectionSample[];
+  return attachCustomValues(samples, await listCollectionCustomValues(collectionId));
 }
 
 // Every sample across every collection this owner has, each still carrying
@@ -221,6 +252,13 @@ export async function insertCollectionSample(
   }
 
   const { primary_identifier, species, latitude, longitude, ...rest } = row;
+  // "custom:<column id>" keys aren't real columns on `collection_samples`
+  // — pull them out before building the insert payload and write them to
+  // collection_custom_values separately once the sample itself exists,
+  // same as insertSample does for the main samples table.
+  const customEntries = Object.entries(rest).filter(([key]) => customColumnIdFromKey(key) !== null);
+  for (const [key] of customEntries) delete rest[key];
+
   const insertValues: Record<string, string | number> = {
     collection_id: collectionId,
     primary_identifier: primary_identifier.trim(),
@@ -246,7 +284,21 @@ export async function insertCollectionSample(
     return { ok: false, errors: [error.message] };
   }
 
-  return { ok: true, sample: data as CollectionSample };
+  const sample = data as CollectionSample;
+  if (customEntries.length > 0) {
+    const upserted = await upsertCollectionCustomValues(
+      customEntries.map(([key, value]) => ({
+        column_id: customColumnIdFromKey(key)!,
+        sample_id: sample.id,
+        value: value?.trim() ? value.trim() : null,
+      }))
+    );
+    for (const v of upserted) {
+      if (v.value !== null) sample[customColumnKey(v.column_id)] = v.value;
+    }
+  }
+
+  return { ok: true, sample };
 }
 
 export type CollectionBulkImportResult = {

@@ -8,10 +8,15 @@ import { Collection, CollectionSample } from "@/lib/collections-store";
 import { RawRow } from "@/lib/validation";
 import { getVisibleColumns } from "@/lib/fields";
 import { useOptionalFields } from "@/lib/use-optional-fields";
+import { useCollectionCustomColumns } from "@/lib/use-collection-custom-columns";
+import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { CollectionIcon } from "@/components/collections/collection-icon";
 import { AddSampleDialog } from "@/components/samples/add-sample-dialog";
 import { ImportDialog } from "@/components/samples/import-dialog";
 import { StagingTable, StagedSample } from "@/components/samples/staging-table";
+import { TemplateDialog } from "@/components/samples/template-dialog";
+import { FieldPickerButton } from "@/components/samples/field-picker";
+import { ManageSampleColumnsDialog } from "@/components/samples/manage-sample-columns-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -39,7 +44,15 @@ function newClientId() {
 export default function CollectionSamplesPage() {
   const { id: collectionId } = useParams<{ id: string }>();
 
-  const { selected: visibleOptionalKeys } = useOptionalFields();
+  // Scoped to this collection, same as a project's Samples tab scopes to
+  // its own project id — this collection's column choice shouldn't affect
+  // another collection's, or the plain Database page's own setting.
+  const { selected: visibleOptionalKeys, toggle: toggleOptionalKey } = useOptionalFields(collectionId);
+  const {
+    columns: customColumns,
+    addColumnLocally,
+    reload: reloadCustomColumns,
+  } = useCollectionCustomColumns(collectionId);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [samples, setSamples] = useState<CollectionSample[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,7 +173,10 @@ export default function CollectionSamplesPage() {
     }
   }
 
-  const columns = getVisibleColumns(visibleOptionalKeys);
+  const columns = [
+    ...getVisibleColumns(visibleOptionalKeys),
+    ...customColumns.map(customColumnToFieldDef),
+  ];
 
   if (loading) {
     return (
@@ -216,12 +232,27 @@ export default function CollectionSamplesPage() {
       )}
 
       <Card>
-        <CardHeader>
-          <CardTitle>Collection samples</CardTitle>
-          <CardDescription>
-            {samples.length} sample{samples.length === 1 ? "" : "s"} in this collection — kept
-            separate from the main database.
-          </CardDescription>
+        <CardHeader className="flex-row items-start justify-between space-y-0">
+          <div>
+            <CardTitle>Collection samples</CardTitle>
+            <CardDescription>
+              {samples.length} sample{samples.length === 1 ? "" : "s"} in this collection — kept
+              separate from the main database.
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <FieldPickerButton selected={visibleOptionalKeys} onToggle={toggleOptionalKey} />
+            <ManageSampleColumnsDialog
+              columns={customColumns}
+              onSaved={reloadCustomColumns}
+              apiBase={`/api/collections/${collectionId}/custom-columns`}
+              trigger={
+                <Button variant="outline" size="sm">
+                  Manage columns
+                </Button>
+              }
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {samples.length === 0 ? (
@@ -280,16 +311,24 @@ export default function CollectionSamplesPage() {
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <ImportDialog takenIdentifiers={takenIdentifiers} onStage={stageMany} />
+            <ImportDialog
+              takenIdentifiers={takenIdentifiers}
+              onStage={stageMany}
+              customColumns={customColumns}
+              onCustomColumnAdded={addColumnLocally}
+              apiBase={`/api/collections/${collectionId}/custom-columns`}
+            />
+            <TemplateDialog selected={visibleOptionalKeys} onToggle={toggleOptionalKey} />
             <AddSampleDialog
               visibleOptionalKeys={visibleOptionalKeys}
               takenIdentifiers={takenIdentifiers}
               onStage={stageOne}
+              customColumns={customColumns}
             />
           </div>
         </CardHeader>
         <CardContent>
-          <StagingTable staged={staged} onRemove={removeStaged} />
+          <StagingTable staged={staged} customColumns={customColumns} onRemove={removeStaged} />
         </CardContent>
         <CardFooter>
           <Button onClick={handleUpload} disabled={staged.length === 0 || uploading}>

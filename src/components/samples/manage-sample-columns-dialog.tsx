@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import { SampleCustomColumn } from "@/lib/sample-custom-columns-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,14 +26,24 @@ export function ManageSampleColumnsDialog({
   onSaved,
   trigger,
   projectId,
+  apiBase = "/api/samples/custom-columns",
 }: {
-  columns: SampleCustomColumn[];
+  // Only {id, label} are read here — SampleCustomColumn's own shape from
+  // the plain Database/project case, or CollectionCustomColumn's from
+  // Collections, both satisfy this.
+  columns: { id: string; label: string }[];
   onSaved: () => void;
   trigger: React.ReactNode;
   // Set from a project's Samples tab so a column added here is scoped to
   // that project — see sample-custom-columns-store.ts. Left unset from the
-  // plain Database page, which creates an unscoped column instead.
+  // plain Database page, which creates an unscoped column instead, and
+  // from Collections (which instead overrides apiBase below).
   projectId?: string;
+  // Defaults to the account-wide/project-scoped sample custom columns
+  // endpoint; Collections' own Samples page passes its own
+  // /api/collections/[id]/custom-columns instead, since a collection's
+  // samples live in a separate table with their own custom-column scope.
+  apiBase?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -58,7 +67,7 @@ export function ManageSampleColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/samples/custom-columns", {
+      const res = await fetch(apiBase, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label, projectId }),
@@ -77,7 +86,7 @@ export function ManageSampleColumnsDialog({
     }
   }
 
-  function startRename(column: SampleCustomColumn) {
+  function startRename(column: { id: string; label: string }) {
     setRenamingId(column.id);
     setRenameDraft(column.label);
   }
@@ -87,7 +96,7 @@ export function ManageSampleColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/samples/custom-columns/${renamingId}`, {
+      const res = await fetch(`${apiBase}/${renamingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: renameDraft }),
@@ -106,7 +115,7 @@ export function ManageSampleColumnsDialog({
     }
   }
 
-  async function handleDelete(column: SampleCustomColumn) {
+  async function handleDelete(column: { id: string; label: string }) {
     if (
       !window.confirm(
         `Delete column "${column.label}"? Any values entered in it, on any sample, are deleted too. This can't be undone.`
@@ -117,7 +126,7 @@ export function ManageSampleColumnsDialog({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/samples/custom-columns/${column.id}`, { method: "DELETE" });
+      const res = await fetch(`${apiBase}/${column.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       onSaved();
     } catch {

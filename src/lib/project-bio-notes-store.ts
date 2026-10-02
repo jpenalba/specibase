@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabase";
-import { NewNoteImageInput, NoteImage } from "./project-lab-notes-store";
+import { NewNoteImageInput, NoteImage, UpdateNoteImageInput } from "./project-lab-notes-store";
 
 const TABLE = "project_bio_notes_blocks";
 const IMAGES_TABLE = "project_bio_note_images";
@@ -103,6 +103,26 @@ export async function addBioNoteImage(
       sample_ids: input.sample_ids ?? [],
       image_url: input.image_url,
     })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as NoteImage;
+}
+
+// See updateLabNoteImage in project-lab-notes-store.ts — same shape, title/
+// caption only.
+export async function updateBioNoteImage(
+  id: string,
+  input: UpdateNoteImageInput
+): Promise<NoteImage> {
+  const patch: Record<string, unknown> = {};
+  if (input.title !== undefined) patch.title = input.title.trim();
+  if (input.notes !== undefined) patch.notes = input.notes.trim() || null;
+
+  const { data, error } = await getSupabase()
+    .from(IMAGES_TABLE)
+    .update(patch)
+    .eq("id", id)
     .select()
     .single();
   if (error) throw new Error(error.message);

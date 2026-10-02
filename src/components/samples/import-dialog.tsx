@@ -6,6 +6,12 @@ import { RawRow, validateRow } from "@/lib/validation";
 import { DATE_FORMAT_LABEL } from "@/lib/dates";
 import { ALL_FIELDS } from "@/lib/fields";
 import { SampleCustomColumn, customColumnKey } from "@/lib/sample-custom-columns-store";
+
+// {id, label} is all this component reads off a custom column — generic
+// over it (rather than hardcoding SampleCustomColumn) so Collections'
+// CollectionCustomColumn, a differently-shaped type, can be passed through
+// to onCustomColumnAdded too without an unsound cast.
+type MinimalCustomColumn = { id: string; label: string };
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,26 +52,33 @@ function remapUnmatchedHeaders(row: RawRow, headerToColumnId: Map<string, string
   return next;
 }
 
-export function ImportDialog({
+export function ImportDialog<Column extends MinimalCustomColumn = SampleCustomColumn>({
   takenIdentifiers,
   onStage,
   customColumns = [],
   onCustomColumnAdded,
   projectId,
+  apiBase = "/api/samples/custom-columns",
 }: {
   takenIdentifiers: string[];
   onStage: (rows: RawRow[]) => void;
   // Existing "Other: specify" custom columns, reused by exact label match
   // instead of creating a duplicate — optional so a caller with nowhere to
-  // attach sample-scoped values (Collections' own staging flow, which
-  // imports into a different table with no sample_id yet) can leave both
-  // out, in which case an unrecognized header is just left as-is.
-  customColumns?: SampleCustomColumn[];
-  onCustomColumnAdded?: (column: SampleCustomColumn) => void;
+  // attach sample-scoped values can leave both out, in which case an
+  // unrecognized header is just left as-is.
+  customColumns?: Column[];
+  onCustomColumnAdded?: (column: Column) => void;
   // Set from a project's Samples tab so a column created here for an
   // unrecognized header is scoped to that project, same as
-  // ManageSampleColumnsDialog's own projectId prop.
+  // ManageSampleColumnsDialog's own projectId prop. Collections' own
+  // staging flow leaves this unset and points apiBase at its own
+  // collection-scoped endpoint instead.
   projectId?: string;
+  // Defaults to the account-wide/project-scoped sample custom columns
+  // endpoint; Collections' own "Add samples" flow passes its own
+  // /api/collections/[id]/custom-columns instead, since a collection's
+  // samples live in a separate table with their own custom-column scope.
+  apiBase?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
@@ -117,7 +130,7 @@ export function ImportDialog({
       for (const column of customColumns) headerToColumnId.set(column.label, column.id);
       for (const header of unmatchedHeaders) {
         if (headerToColumnId.has(header)) continue;
-        const res = await fetch("/api/samples/custom-columns", {
+        const res = await fetch(apiBase, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ label: header, projectId }),

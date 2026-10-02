@@ -5,7 +5,7 @@ import { REQUIRED_FIELDS, optionalFieldByKey } from "@/lib/fields";
 import { DATE_FORMAT_LABEL } from "@/lib/dates";
 import { RawRow, validateRow } from "@/lib/validation";
 import { GbifClassification } from "@/lib/gbif";
-import { SampleCustomColumn, customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
+import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,8 +31,10 @@ export function AddSampleDialog({
   onStage: (row: RawRow) => void;
   // Existing "Other: specify" custom columns (see manage-sample-columns-
   // dialog.tsx, which is where they're created) — shown here so a value
-  // can be filled in for this sample, but not created from here.
-  customColumns?: SampleCustomColumn[];
+  // can be filled in for this sample, but not created from here. Only
+  // {id, label} are read (via customColumnToFieldDef), so Collections'
+  // differently-shaped CollectionCustomColumn fits here too.
+  customColumns?: { id: string; label: string }[];
 }) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<RawRow>({});
