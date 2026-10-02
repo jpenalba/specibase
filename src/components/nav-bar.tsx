@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { CurrentUser } from "@/lib/current-user";
 import { cn } from "@/lib/utils";
 import { AccountMenu } from "@/components/account/account-menu";
+import { NotificationBell } from "@/components/account/notification-bell";
 import { ThemeToggle } from "./theme-toggle";
 
 const LINKS = [
@@ -63,6 +64,7 @@ export function NavBar({ user }: { user: CurrentUser | null }) {
             );
           })}
         <div className="ml-auto flex items-center gap-2">
+          {user && <NotificationBell />}
           {user && <AccountMenu user={user} />}
           <ThemeToggle />
         </div>

@@ -50,7 +50,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ errors: [`Unknown role "${body?.role}"`] }, { status: 400 });
     }
 
-    const result = await addMemberByIdentifier(id, identifier, role, new URL(request.url).origin);
+    const result = await addMemberByIdentifier(
+      id,
+      identifier,
+      role,
+      new URL(request.url).origin,
+      auth.user.id
+    );
     if (!result.ok) {
       return NextResponse.json({ errors: result.errors }, { status: 400 });
     }

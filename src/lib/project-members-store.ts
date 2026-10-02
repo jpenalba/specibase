@@ -1,6 +1,7 @@
 import { getSupabase } from "./supabase";
 import { findProfileByIdentifier, formatDisplayName } from "./profile-store";
 import { inviteOrResendEmail } from "./account-invites";
+import { createProjectSharedNotification } from "./notifications-store";
 
 const TABLE = "project_members";
 
@@ -134,6 +135,31 @@ export async function addMember(
   return data as ProjectMember;
 }
 
+// Wraps addMember with the nav-bar notification for the person being
+// added — only when this is an actual new membership (not a role change
+// on someone already on the project) and only when they didn't add
+// themselves (project creation makes the creator its first Owner via
+// addMember directly, never through here, but this guards the same case
+// defensively). Best-effort: a notification insert failing shouldn't fail
+// the share itself, so it's swallowed rather than surfaced to the caller.
+async function addMemberAndNotify(
+  projectId: string,
+  userId: string,
+  role: ProjectRole,
+  actorId: string
+): Promise<ProjectMember> {
+  const wasAlreadyMember = (await getMemberRole(projectId, userId)) !== null;
+  const member = await addMember(projectId, userId, role);
+  if (!wasAlreadyMember && actorId !== userId) {
+    try {
+      await createProjectSharedNotification(userId, projectId, actorId);
+    } catch {
+      // See doc comment — never block the share over this.
+    }
+  }
+  return member;
+}
+
 export type AddMemberResult =
   | { ok: true; member: ProjectMember; invited: boolean; resent: boolean }
   | { ok: false; errors: string[] };
@@ -144,11 +170,14 @@ export type AddMemberResult =
 // handle_new_user trigger mirrors into profiles), so the membership row
 // can be created for the new account in the same call. See
 // AUTH_AND_PERMISSIONS_PLAN.md's "Inviting people" — one flow, not two.
+// `actorId` is whoever's adding them (the authenticated caller) — used
+// only to attribute the "X shared a project with you" notification.
 export async function addMemberByIdentifier(
   projectId: string,
   identifier: string,
   role: ProjectRole,
-  siteUrl: string
+  siteUrl: string,
+  actorId: string
 ): Promise<AddMemberResult> {
   const trimmed = identifier.trim();
   if (!trimmed) return { ok: false, errors: ["An email or username is required"] };
@@ -164,7 +193,7 @@ export async function addMemberByIdentifier(
   // would. A username match is never ambiguous this way — only an account
   // that's actually set a password could have set one.
   if (existing && (!isEmail || existing.registered_at)) {
-    const member = await addMember(projectId, existing.id, role);
+    const member = await addMemberAndNotify(projectId, existing.id, role, actorId);
     return { ok: true, member, invited: false, resent: false };
   }
 
@@ -175,7 +204,7 @@ export async function addMemberByIdentifier(
   const result = await inviteOrResendEmail(trimmed, `${siteUrl}/reset-password`);
   if (!result.ok) return { ok: false, errors: result.errors };
 
-  const member = await addMember(projectId, result.userId, role);
+  const member = await addMemberAndNotify(projectId, result.userId, role, actorId);
   return { ok: true, member, invited: true, resent: result.resent };
 }
 
