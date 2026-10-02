@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Collection } from "@/lib/collections-store";
 import { COLLECTION_TYPES, COLLECTION_TYPE_LABELS, CollectionType } from "@/lib/collection-types";
-import { parseDDMMYYYY, DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
+import { parseDDMMYYYY, DATE_FORMAT_LABEL, DATE_FORMAT_HELP, formatToDDMMYYYY } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -113,7 +113,7 @@ export function CollectionDialog({
     }
     const dateAddedIso = parseDDMMYYYY(values.dateAdded);
     if (!dateAddedIso) {
-      setErrors([`Date added must be in ${DATE_FORMAT_LABEL} format`]);
+      setErrors([`Date added must be a valid date in ${DATE_FORMAT_HELP} format`]);
       return;
     }
 

@@ -3,7 +3,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { MoreHorizontal, Search, Trash2, X } from "lucide-react";
 import { getVisibleColumns, FieldDef } from "@/lib/fields";
-import { DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
+import { DATE_FORMAT_LABEL } from "@/lib/dates";
+import { formatDateDisplay } from "@/lib/date-format";
 import { RawRow } from "@/lib/validation";
 import { SampleRecord, sampleToRawRow } from "@/lib/samples-store";
 import { SampleCustomColumn, customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
@@ -609,7 +610,7 @@ export function SampleTable({
                       }
                       return (
                         <TableCell key={col.key} className={cn("py-1", isHidden && "opacity-50")}>
-                          {col.type === "date" ? formatToDDMMYYYY(String(value)) : String(value)}
+                          {col.type === "date" ? formatDateDisplay(String(value)) : String(value)}
                         </TableCell>
                       );
                     })}

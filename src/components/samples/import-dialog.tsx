@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Papa from "papaparse";
 import { RawRow, validateRow } from "@/lib/validation";
-import { DATE_FORMAT_LABEL } from "@/lib/dates";
+import { DATE_FORMAT_HELP } from "@/lib/dates";
 import { ALL_FIELDS } from "@/lib/fields";
 import { SampleCustomColumn, customColumnKey } from "@/lib/sample-custom-columns-store";
 
@@ -185,7 +185,7 @@ export function ImportDialog<Column extends MinimalCustomColumn = SampleCustomCo
           <DialogDescription>
             This stages rows below — nothing is saved to the database until
             you upload the staged batch. Sample ID and species are the only
-            required columns; dates must be {DATE_FORMAT_LABEL}. Duplicate
+            required columns; dates must be {DATE_FORMAT_HELP}. Duplicate
             Sample IDs block the whole file rather than being skipped.
           </DialogDescription>
         </DialogHeader>

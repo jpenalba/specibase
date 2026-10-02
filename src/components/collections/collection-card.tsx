@@ -6,7 +6,7 @@ import { Pencil, ListChecks, DatabaseZap } from "lucide-react";
 import { Collection } from "@/lib/collections-store";
 import { COLLECTION_TYPE_LABELS } from "@/lib/collection-types";
 import { parseCollaborators } from "@/lib/collaborators";
-import { formatToDDMMYYYY } from "@/lib/dates";
+import { formatDateDisplay } from "@/lib/date-format";
 import { CollectionIcon } from "./collection-icon";
 import { CollectionDialog } from "./collection-dialog";
 import { Button } from "@/components/ui/button";
@@ -105,7 +105,7 @@ export function CollectionCard({
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-          <Field label="Date added" value={formatToDDMMYYYY(collection.date_added)} />
+          <Field label="Date added" value={formatDateDisplay(collection.date_added)} />
           <Field label="Focal species/group" value={collection.focal_group} />
           <Field label="Collection location" value={collection.location} />
           {contacts.length > 0 && (

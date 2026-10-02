@@ -1,5 +1,5 @@
 import { OPTIONAL_FIELDS } from "./fields";
-import { parseDDMMYYYY, DATE_FORMAT_LABEL } from "./dates";
+import { parseDDMMYYYY, DATE_FORMAT_HELP } from "./dates";
 
 export type RawRow = Record<string, string>;
 
@@ -19,13 +19,15 @@ function isBlank(value: string | undefined): boolean {
 // no spaces or punctuation that would need escaping anywhere downstream.
 const SAMPLE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-// Basic Latin plus Latin-1 Supplement letters — covers accented vowels and
-// consonants used across Western/Central European place names (é, ü, ñ, ç,
-// å, ø, æ, œ...) and the German eszett (ß), without reaching into other
-// scripts (Cyrillic, Greek, CJK, etc.), which aren't supported yet. The
-// ×/÷ gaps exclude the multiplication/division signs that sit
-// inside that Unicode block but aren't letters.
-const LOCALITY_CHAR_PATTERN = /[A-Za-z0-9À-ÖØ-öø-ÿ\s.,'()/&-]/;
+// Every printable character on a standard keyboard (space through tilde —
+// letters, digits, and all the punctuation/symbol keys, backslash
+// included) plus Latin-1 Supplement letters, which covers accented vowels
+// and consonants used across Western/Central European place names (é, ü,
+// ñ, ç, å, ø, æ, œ...) and the German eszett (ß). Other scripts (Cyrillic,
+// Greek, CJK, etc.) aren't supported yet. The ×/÷ gaps exclude the
+// multiplication/division signs that sit inside that Unicode block but
+// aren't letters.
+const LOCALITY_CHAR_PATTERN = /[\x20-\x7EÀ-ÖØ-öø-ÿ]/;
 
 function findUnsupportedLocalityChars(value: string): string[] {
   const found = new Set<string>();
@@ -95,7 +97,7 @@ export function validateRow(
     if (isBlank(raw)) continue;
     if (field.type === "date") {
       if (parseDDMMYYYY(raw) === null) {
-        errors.push(`${field.label} must be in ${DATE_FORMAT_LABEL} format`);
+        errors.push(`${field.label} must be a valid date in ${DATE_FORMAT_HELP} format`);
       }
     } else if (field.type === "select" && field.options && !field.options.includes(raw)) {
       errors.push(`${field.label} must be one of: ${field.options.join(", ")}`);

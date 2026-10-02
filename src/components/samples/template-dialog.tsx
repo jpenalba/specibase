@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FieldPicker } from "./field-picker";
-import { DATE_FORMAT_LABEL } from "@/lib/dates";
+import { DATE_FORMAT_HELP } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,7 +35,7 @@ export function TemplateDialog({
             Sample ID and species are the only required columns, and are
             always included. Tick any other columns your lab wants in the
             template — this is the same set shown in the table, and you can
-            change it any time. Dates should be entered as {DATE_FORMAT_LABEL}.
+            change it any time. Dates should be entered as {DATE_FORMAT_HELP}.
           </DialogDescription>
         </DialogHeader>
         <FieldPicker selected={selected} onToggle={onToggle} showRequiredFields />

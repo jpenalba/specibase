@@ -1,5 +1,4 @@
 import { FieldDef } from "./fields";
-import { formatToDDMMYYYY } from "./dates";
 import { formatDateDisplay } from "./date-format";
 import { EntryStatus, STATUS_LABELS } from "./lab-workflow-status";
 import { SampleRecord } from "./samples-store";
@@ -17,7 +16,7 @@ export function samplesToCsv(samples: SampleRecord[], columns: FieldDef[]): stri
       .map((col) => {
         const raw = sample[col.key];
         if (raw === undefined || raw === null || raw === "") return "";
-        const display = col.type === "date" ? formatToDDMMYYYY(String(raw)) : String(raw);
+        const display = col.type === "date" ? formatDateDisplay(String(raw)) : String(raw);
         return csvEscape(display);
       })
       .join(",")
@@ -36,7 +35,7 @@ export function samplesToAutoTableRows(
     columns.map((col) => {
       const raw = sample[col.key];
       if (raw === undefined || raw === null || raw === "") return "";
-      return col.type === "date" ? formatToDDMMYYYY(String(raw)) : String(raw);
+      return col.type === "date" ? formatDateDisplay(String(raw)) : String(raw);
     })
   );
   return { head, body };

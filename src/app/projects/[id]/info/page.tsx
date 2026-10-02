@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { Project } from "@/lib/projects-store";
 import { ProjectReference } from "@/lib/project-references-store";
 import { ProjectMemberWithProfile } from "@/lib/project-members-store";
-import { formatToDDMMYYYY } from "@/lib/dates";
+import { formatDateDisplay } from "@/lib/date-format";
 import { renderMarkdownToPdf, renderParagraph } from "@/lib/markdown-pdf";
 import { MarkdownField } from "@/components/projects/markdown-field";
 import { ReferencesSection } from "@/components/projects/references-section";
@@ -169,7 +169,7 @@ export default function ProjectInfoPage() {
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
             <DetailField
               label="Start date"
-              value={project.start_date ? formatToDDMMYYYY(project.start_date) : null}
+              value={project.start_date ? formatDateDisplay(project.start_date) : null}
             />
             <DetailField label="Owner" value={owner ? memberName(owner) : null} />
             <DetailField label="Focal species/group" value={project.focal_group} />

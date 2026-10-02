@@ -10,7 +10,7 @@ import {
   ProtocolSourceType,
 } from "@/lib/protocol-types";
 import { ALLOWED_PROTOCOL_FILE_TYPES, MAX_PROTOCOL_PDF_BYTES } from "@/lib/protocol-files";
-import { parseDDMMYYYY, DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
+import { parseDDMMYYYY, DATE_FORMAT_LABEL, DATE_FORMAT_HELP, formatToDDMMYYYY } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,7 +110,7 @@ export function ProtocolDialog({
     }
     const dateAddedIso = parseDDMMYYYY(values.dateAdded);
     if (!dateAddedIso) {
-      setErrors([`Date added must be in ${DATE_FORMAT_LABEL} format`]);
+      setErrors([`Date added must be a valid date in ${DATE_FORMAT_HELP} format`]);
       return;
     }
     const keepsExistingPdf =

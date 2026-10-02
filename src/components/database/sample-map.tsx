@@ -9,7 +9,7 @@ import { gbifTileUrl, GBIF_TILE_SIZE } from "@/lib/gbif";
 import { LayerShape, shapePolygonPoints } from "@/lib/layer-shapes";
 import { hexToRgb, strokeColorFor } from "@/lib/layer-colors";
 import { FieldDef } from "@/lib/fields";
-import { formatToDDMMYYYY } from "@/lib/dates";
+import { formatDateDisplay } from "@/lib/date-format";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -197,7 +197,7 @@ function buildPopupHtml(sample: SampleRecord, columns: FieldDef[]): string {
         raw === undefined || raw === null || raw === ""
           ? "—"
           : col.type === "date"
-            ? formatToDDMMYYYY(String(raw))
+            ? formatDateDisplay(String(raw))
             : String(raw);
       return `<div style="display:flex;justify-content:space-between;gap:16px;padding:2px 0;">
         <span style="color:#52514e;">${escapeHtml(col.label)}</span>

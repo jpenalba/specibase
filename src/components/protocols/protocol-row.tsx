@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FileText, Hammer, Pencil, Trash2 } from "lucide-react";
 import { Protocol } from "@/lib/protocols-store";
 import { PROTOCOL_TYPE_LABELS } from "@/lib/protocol-types";
-import { formatToDDMMYYYY } from "@/lib/dates";
+import { formatDateDisplay } from "@/lib/date-format";
 import { ProtocolDialog } from "./protocol-dialog";
 import { Button } from "@/components/ui/button";
 
@@ -57,7 +57,7 @@ export function ProtocolRow({
       </div>
 
       <p className="shrink-0 text-xs text-muted-foreground">
-        Added {formatToDDMMYYYY(protocol.date_added)}
+        Added {formatDateDisplay(protocol.date_added)}
       </p>
 
       <div className="flex shrink-0 items-center gap-1">

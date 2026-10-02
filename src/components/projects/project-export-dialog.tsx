@@ -19,8 +19,7 @@ import { DEFAULT_LAYER_SHAPE, LayerShape, shapePolygonPoints } from "@/lib/layer
 import { DEFAULT_OPTIONAL_KEYS, getVisibleColumns } from "@/lib/fields";
 import { renderMarkdownToPdf, renderParagraph } from "@/lib/markdown-pdf";
 import { detailTableToAutoTableRows, samplesToAutoTableRows } from "@/lib/csv";
-import { formatTimestampDisplay } from "@/lib/date-format";
-import { formatToDDMMYYYY } from "@/lib/dates";
+import { formatTimestampDisplay, formatDateDisplay } from "@/lib/date-format";
 import { SampleMap, SampleMapHandle, CapturedMapImage } from "@/components/database/sample-map";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -339,7 +338,7 @@ export function ProjectExportDialog({ projectId }: { projectId: string }) {
       const metaLines: string[] = [
         `Status: ${project.status === "completed" ? "Completed" : "In progress"}`,
       ];
-      if (project.start_date) metaLines.push(`Start date: ${formatToDDMMYYYY(project.start_date)}`);
+      if (project.start_date) metaLines.push(`Start date: ${formatDateDisplay(project.start_date)}`);
       const owners = members.filter((m) => m.role === "owner").map(memberName);
       if (owners.length > 0) metaLines.push(`Owner: ${owners.join(", ")}`);
       if (project.focal_group) metaLines.push(`Focal species/group: ${project.focal_group}`);

@@ -1,4 +1,9 @@
-const DMY_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+// Hyphen, slash, backslash, comma, or period — same flexible separator
+// set dates.ts's parseDDMMYYYY accepts for the app's real `date` columns,
+// so a free-typed "Date" column here (a plain text field, not a real
+// date column) reads the same way regardless of which separator was used
+// to type it.
+const DMY_DATE = /^(\d{1,2})[-/\\.,](\d{1,2})[-/\\.,](\d{4})$/;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 const MONTH_ABBREVIATIONS = [
@@ -6,10 +11,11 @@ const MONTH_ABBREVIATIONS = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-// The Detailed view's "Date" columns are entered as dd/mm/yyyy (unambiguous
-// to type) but read as "01 Jan 1970" once locked, so nobody has to guess
-// whether a bare numeric date is day-first or month-first. Also accepts
-// the yyyy-mm-dd shape a "Date" column stored before it was a plain text
+// The Detailed view's "Date" columns are entered as dd-mm-yyyy (any of
+// -, /, \, comma, or period as the separator — unambiguous to type) but
+// read as "01 Jan 1970" once locked, so nobody has to guess whether a
+// bare numeric date is day-first or month-first. Also accepts the
+// yyyy-mm-dd shape a "Date" column stored before it was a plain text
 // field, so anything entered that way still reads correctly. Anything
 // else (free-typed text, empty, a value still mid-edit) is left as-is.
 export function formatDateDisplay(value: string): string {

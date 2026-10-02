@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Project, ProjectStatus } from "@/lib/projects-store";
 import { formatDisplayName } from "@/lib/profile-store";
-import { parseDDMMYYYY, DATE_FORMAT_LABEL, formatToDDMMYYYY } from "@/lib/dates";
+import { parseDDMMYYYY, DATE_FORMAT_LABEL, DATE_FORMAT_HELP, formatToDDMMYYYY } from "@/lib/dates";
 import { categorizeFocalGroup, FocalGroupCategory } from "@/lib/focal-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,7 +148,7 @@ export function ProjectDialog({
     if (values.startDate.trim()) {
       const parsed = parseDDMMYYYY(values.startDate);
       if (!parsed) {
-        setErrors([`Start date must be in ${DATE_FORMAT_LABEL} format`]);
+        setErrors([`Start date must be a valid date in ${DATE_FORMAT_HELP} format`]);
         return;
       }
       startDateIso = parsed;

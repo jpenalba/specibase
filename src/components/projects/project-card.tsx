@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Pencil, FolderOpen } from "lucide-react";
 import { Project } from "@/lib/projects-store";
 import { ProjectMemberWithProfile } from "@/lib/project-members-store";
-import { formatToDDMMYYYY } from "@/lib/dates";
+import { formatDateDisplay } from "@/lib/date-format";
 import { FocalGroupIcon } from "./focal-group-icon";
 import { ProjectStatusBadge } from "./project-status-badge";
 import { ProjectDialog } from "./project-dialog";
@@ -74,7 +74,7 @@ export function ProjectCard({
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
           <Field
             label="Start date"
-            value={project.start_date ? formatToDDMMYYYY(project.start_date) : null}
+            value={project.start_date ? formatDateDisplay(project.start_date) : null}
           />
           <Field label="Owner" value={owner ? memberName(owner) : null} />
           <Field label="Focal species/group" value={project.focal_group} />
