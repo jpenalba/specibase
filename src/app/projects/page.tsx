@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [links, setLinks] = useState<SampleProjectLink[]>([]);
+  // Just the ids — used only to drop links to a sample that's since been
+  // deleted (see below), not to render anything about the sample itself.
+  const [liveSampleIds, setLiveSampleIds] = useState<Set<string>>(new Set());
   const [members, setMembers] = useState<ProjectMemberWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,9 +21,11 @@ export default function ProjectsPage() {
   // adding a project) — only the very first load, which `loading`'s
   // initial state already covers, needs the "Loading..." placeholder.
   const load = useCallback(() => {
-    fetch("/api/projects")
-      .then((res) => res.json())
-      .then((data) => {
+    Promise.all([
+      fetch("/api/projects").then((res) => res.json()),
+      fetch("/api/samples").then((res) => res.json()),
+    ])
+      .then(([data, samplesData]) => {
         if (data.errors?.length > 0) {
           setError(data.errors.join(" "));
         } else {
@@ -28,6 +33,13 @@ export default function ProjectsPage() {
           setProjects(data.projects ?? []);
           setLinks(data.links ?? []);
           setMembers(data.members ?? []);
+          // `links` (sample_projects) has no deleted_at of its own, and a
+          // sample's own soft-delete never touches its link rows — see
+          // buildLayers' identical fix for the Database page's layer
+          // panel. Without this, a card kept counting every sample ever
+          // linked, including ones since deleted, rather than what's
+          // actually there now.
+          setLiveSampleIds(new Set((samplesData.samples ?? []).map((s: { id: string }) => s.id)));
         }
       })
       .catch(() => setError("Couldn't reach the server."))
@@ -72,7 +84,7 @@ export default function ProjectsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {projects.map((project) => {
             const sampleIds = links
-              .filter((l) => l.project_id === project.id)
+              .filter((l) => l.project_id === project.id && liveSampleIds.has(l.sample_id))
               .map((l) => l.sample_id);
             const projectMembers = members.filter((m) => m.project_id === project.id);
             return (

@@ -1,17 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Collection, CollectionSample } from "@/lib/collections-store";
 import { RawRow } from "@/lib/validation";
 import { getVisibleColumns } from "@/lib/fields";
+import { MapLayer } from "@/lib/layers";
+import { MAIN_DATABASE_COLOR } from "@/lib/layer-colors";
+import { DEFAULT_LAYER_SHAPE } from "@/lib/layer-shapes";
 import { useOptionalFields } from "@/lib/use-optional-fields";
 import { useHiddenCustomColumns } from "@/lib/use-hidden-custom-columns";
 import { useCollectionCustomColumns } from "@/lib/use-collection-custom-columns";
 import { customColumnToFieldDef } from "@/lib/sample-custom-columns-store";
+import { cn } from "@/lib/utils";
 import { CollectionIcon } from "@/components/collections/collection-icon";
+import { SampleMap } from "@/components/database/sample-map";
 import { AddSampleDialog } from "@/components/samples/add-sample-dialog";
 import { ImportDialog } from "@/components/samples/import-dialog";
 import { StagingTable, StagedSample } from "@/components/samples/staging-table";
@@ -42,6 +47,12 @@ function newClientId() {
     : `${Date.now()}-${Math.random()}`;
 }
 
+// This map never hides a sample (unlike the Database/project pages, this
+// collection's own table has no per-row "hide from map" toggle) — a
+// stable, shared empty Set so SampleMap's own sync effect (keyed on this
+// prop by reference) doesn't re-run every render.
+const NO_HIDDEN_SAMPLES = new Set<string>();
+
 export default function CollectionSamplesPage() {
   const { id: collectionId } = useParams<{ id: string }>();
 
@@ -59,6 +70,8 @@ export default function CollectionSamplesPage() {
   const [samples, setSamples] = useState<CollectionSample[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mapSyncError, setMapSyncError] = useState<string | null>(null);
+  const [highlightedSampleId, setHighlightedSampleId] = useState<string | null>(null);
 
   const [staged, setStaged] = useState<StagedSample[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -175,12 +188,33 @@ export default function CollectionSamplesPage() {
     }
   }
 
+  function selectSample(sampleId: string) {
+    setHighlightedSampleId((current) => (current === sampleId ? null : sampleId));
+  }
+
   // Excluded from the rendered table here, but not from the sample-loader
   // dialogs below — see FieldPickerButton's own column for the same split.
   const columns = [
     ...getVisibleColumns(visibleOptionalKeys),
     ...customColumns.filter((c) => !hiddenCustomColumnIds.has(c.id)).map(customColumnToFieldDef),
   ];
+
+  // One flat-colored layer for the whole collection — `samples` already
+  // comes from /api/collections/[id]/samples, scoped to just this
+  // collection (and already excluding soft-deleted ones), so there's no
+  // root/children layer picker to build here, unlike the Database page.
+  const layer: MapLayer = useMemo(
+    () => ({
+      id: collectionId,
+      label: collection?.name ?? "This collection",
+      color: MAIN_DATABASE_COLOR,
+      shape: DEFAULT_LAYER_SHAPE,
+      sampleIds: new Set(samples.map((s) => s.id)),
+    }),
+    [collectionId, collection?.name, samples]
+  );
+  const visibleLayerIds = useMemo(() => new Set([collectionId]), [collectionId]);
+  const mappableCount = samples.filter((s) => s.latitude != null && s.longitude != null).length;
 
   if (loading) {
     return (
@@ -223,6 +257,26 @@ export default function CollectionSamplesPage() {
         </div>
       </div>
 
+      {mapSyncError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          The map couldn&apos;t draw the points: {mapSyncError}
+        </div>
+      )}
+
+      <div className="flex h-[55vh] min-h-[420px] overflow-hidden rounded-lg border border-border">
+        <SampleMap
+          samples={samples}
+          layers={[layer]}
+          visibleLayerIds={visibleLayerIds}
+          popupColumns={columns}
+          onSyncError={setMapSyncError}
+          hiddenSampleIds={NO_HIDDEN_SAMPLES}
+          highlightedSampleId={highlightedSampleId}
+          gbifLayers={[]}
+          visibleGbifIds={new Set()}
+        />
+      </div>
+
       {message && (
         <div
           className={
@@ -241,7 +295,8 @@ export default function CollectionSamplesPage() {
             <CardTitle>Collection samples</CardTitle>
             <CardDescription>
               {samples.length} sample{samples.length === 1 ? "" : "s"} in this collection — kept
-              separate from the main database.
+              separate from the main database
+              {samples.length > 0 && ` (${mappableCount} with map coordinates)`}.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -282,7 +337,14 @@ export default function CollectionSamplesPage() {
                 </TableHeader>
                 <TableBody>
                   {samples.map((sample) => (
-                    <TableRow key={sample.id}>
+                    <TableRow
+                      key={sample.id}
+                      onClick={() => selectSample(sample.id)}
+                      className={cn(
+                        "cursor-pointer",
+                        highlightedSampleId === sample.id && "bg-accent"
+                      )}
+                    >
                       {columns.map((col) => (
                         <TableCell key={col.key}>
                           {sample[col.key] ? (
@@ -292,7 +354,7 @@ export default function CollectionSamplesPage() {
                           )}
                         </TableCell>
                       ))}
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <Button
                           type="button"
                           variant="ghost"
